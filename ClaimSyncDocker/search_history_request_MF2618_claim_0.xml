@@ -1,0 +1,26 @@
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="https://www.shafafiya.org/v2/">
+   <soapenv:Header/>
+   <soapenv:Body>
+     <v2:SearchTransactions>
+      <!--Optional:-->
+        <v2:login>ANBU</v2:login>
+      <!--Optional:-->
+        <v2:pwd>ANBU</v2:pwd>
+        <v2:direction>1</v2:direction>
+      <!--Optional:-->
+        <v2:callerLicense>ANBU</v2:callerLicense>
+      <!--Optional:-->
+        <v2:ePartner></v2:ePartner>
+        <v2:transactionID>2</v2:transactionID>
+        <v2:transactionStatus>2</v2:transactionStatus>
+      <!--Optional:-->
+        <v2:transactionFileName></v2:transactionFileName>
+      <!--Optional:-->
+        <v2:transactionFromDate>11/03/2026 00:00:00</v2:transactionFromDate>
+      <!--Optional:-->
+        <v2:transactionToDate>11/03/2026 02:00:00</v2:transactionToDate>
+        <v2:minRecordCount>1</v2:minRecordCount>
+        <v2:maxRecordCount>1000</v2:maxRecordCount>
+     </v2:SearchTransactions>
+  </soapenv:Body>
+</soapenv:Envelope>

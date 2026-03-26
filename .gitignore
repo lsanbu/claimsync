@@ -1,0 +1,48 @@
+# ── Secrets & credentials ─────────────────────────────────────────
+*.ini
+*.env
+.env*
+db_postgres_reset_pwd.txt
+claimssync_migration_credentials_v1.sql
+
+# ── Archives ──────────────────────────────────────────────────────
+*.zip
+
+# ── Node / Next.js ───────────────────────────────────────────────
+node_modules/
+.next/
+out/
+
+# ── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.spec
+
+# ── IDE ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store
+
+# ── Temp / scratch files ─────────────────────────────────────────
+Temp/
+*.log
+files20mar*/
+onboardtemp/
+
+# ── Continuation prompts (scratch notes, not code) ───────────────
+Continuation*.txt
+ContinueOn*.txt
+Continueon*.txt
+
+# ── PyInstaller artifacts ─────────────────────────────────────────
+dist/
+build/

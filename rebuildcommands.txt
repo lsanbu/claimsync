@@ -1,0 +1,134 @@
+cd D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard
+
+docker build --no-cache -t crclaimssync.azurecr.io/claimsync-dashboard:2.4 .
+az acr login --name crclaimssync
+docker push crclaimssync.azurecr.io/claimsync-dashboard:2.4
+
+az containerapp update \
+  --name ca-claimssync-dashboard \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --image crclaimssync.azurecr.io/claimsync-dashboard:2.6 \
+  --output none && echo "Dashboard :2.6 ✓"
+
+TOKEN=$(curl -s -X POST \
+  https://ca-claimssync-api.whitewater-45edc27c.uaenorth.azurecontainerapps.io/auth/admin/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"anbu@kaaryaa.com","password":"Kaaryaa@Admin2026"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token','ERROR'))")
+
+echo "Token OK: ${TOKEN:0:30}..."
+
+curl -s \
+  https://ca-claimssync-api.whitewater-45edc27c.uaenorth.azurecontainerapps.io/admin/resellers \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+echo "---REVENUE---"
+
+curl -s \
+  https://ca-claimssync-api.whitewater-45edc27c.uaenorth.azurecontainerapps.io/admin/revenue \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+echo "---FACILITIES---"
+
+curl -s \
+  https://ca-claimssync-api.whitewater-45edc27c.uaenorth.azurecontainerapps.io/admin/facilities \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+  
+pip3 install bcrypt --user
+
+Step 1 — Test Admin routes (login as Anbu first)
+Open browser → go to:
+https://ca-claimssync-dashboard.whitewater-45edc27c.uaenorth.azurecontainerapps.io/admin/login
+Login: anbu@kaaryaa.com / Kaaryaa@Admin2026
+Then visit each route:
+/admin/onboarding        ← existing list — click any request to test [id] detail page
+/admin/resellers         ← new ✅
+/admin/facilities        ← new ✅
+/admin/revenue           ← new ✅
+/admin/users             ← existing — verify Senthil + Karthi appear
+
+Step 2 — Test Reseller routes (login as Saleem)
+Open new browser tab (or incognito) → go to:
+https://ca-claimssync-dashboard.whitewater-45edc27c.uaenorth.azurecontainerapps.io/reseller/login
+Login: saleem@claimsync.cloud / ClaimSync@Saleem2026
+Then visit:
+/reseller/onboarding           ← new ✅ — should show Saleem's submitted requests
+/reseller/facilities/<id>      ← new ✅ — from dashboard click any facility card
+
+Step 3 — Test Senthil + Karthi logins
+Open incognito → go to /admin/login:
+senthil@kaaryaa.com / Kaaryaa@Senthil2026
+karthi@kaaryaa.com  / Kaaryaa@Karthi2026
+Both should log in and see admin dashboard. Neither should see the Users menu item (non-super-admin).
+
+What to look for per page:
+RouteHealthyBroken/admin/onboarding/[id]Shows facility + reseller details, Approve/Reject buttons404 or blank/reseller/onboardingList of submitted requests with status badges404 or spinner/reseller/facilities/[id]Facility stats + sync run history table404 or error/admin/resellersTable with Saleem listed404 or empty/admin/facilitiesMF2618 listed with status404 or empty/admin/revenueMRR/ARR cards + plan breakdown404 or error
+
+Share screenshots or any errors you hit — we'll fix inline. 🎯
+
+
+
+Good plan — let's go systematically. Before I start building, let me pull up the existing dashboard code so new pages are consistent with what's already live.Prioritized pending pages and charted systematic build sequencePrioritized pending pages and charted systematic build sequenceGood, I have the full picture. Let me now tackle them in the most logical order — quickest win first, then building toward the Saleem demo:
+Proposed order:
+
+/admin/onboarding/[id] — dynamic route file (already exported, 5-min fix)
+/reseller/onboarding — Saleem's request list (unblocks demo)
+/reseller/facilities/[id] — facility detail
+/admin/resellers — reseller management
+/admin/facilities — all facilities view
+/admin/revenue — billing overview
+Senthil + Karthi seed SQL
+
+Starting with #1 — /admin/onboarding/[id]:Strategized building missing pages sequentiallyStrategized building missing pages sequentiallyGood. The dashboard source is on your Windows machine — I'll build each file here, you download and place it, then we do one consolidated rebuild at the end of all 7 items (or per batch). Let's go:
+
+Item 1 — /admin/onboarding/[id] Dynamic Route PageArchitected reseller onboarding interface for request managementArchitected reseller onboarding interface for request managementItem 1 done. Now Item 2 — /reseller/onboarding (Saleem's request list):Reseller onboarding list page - Saleem's submitted requestsReseller onboarding list page - Saleem's submitted requestsNow Item 3 — /reseller/facilities/[id] (per-facility detail):Reseller facility detail page - per-facility sync history and statsReseller facility detail page - per-facility sync history and statsNow Items 4, 5, 6 — the three admin pages:Created 3 filesCreated 3 filesNow Item 7 — Senthil + Karthi seed SQL:SQL script to create Senthil and Karthi as admin usersSQL script to create Senthil and Karthi as admin usersNow verify all files are present and copy to outputs:Ran 2 commands, read a fileRan 2 commands, read a fileAll 7 items done. Here's your deployment sequence:
+
+Deployment Steps
+Step 1 — Windows CMD: place the 6 new files
+cmdREM Create new folders
+mkdir "D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard\app\admin\onboarding\[id]"
+mkdir "D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard\app\reseller\onboarding"
+mkdir "D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard\app\reseller\facilities\[id]"
+mkdir "D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard\app\admin\resellers"
+mkdir "D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard\app\admin\facilities"
+mkdir "D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard\app\admin\revenue"
+Copy each downloaded file to its matching folder path. Then rebuild:
+cmdcd D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard
+docker build --no-cache -t crclaimssync.azurecr.io/claimsync-dashboard:2.4 .
+docker push crclaimssync.azurecr.io/claimsync-dashboard:2.4
+Step 2 — Cloud Shell: deploy dashboard + create admin users
+bash# Deploy dashboard
+az containerapp update \
+  --name ca-claimssync-dashboard \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --image crclaimssync.azurecr.io/claimsync-dashboard:2.4 \
+  --output none && echo "Dashboard :2.4 ✓"
+
+# Generate hashes for Senthil + Karthi
+python3 -c "
+import bcrypt
+s = bcrypt.hashpw(b'Kaaryaa@Senthil2026', bcrypt.gensalt()).decode()
+k = bcrypt.hashpw(b'Kaaryaa@Karthi2026',  bcrypt.gensalt()).decode()
+print('SENTHIL:', s)
+print('KARTHI:', k)
+"
+Copy the two hashes → edit create_admin_users_v1.sql → replace SENTHIL_HASH and KARTHI_HASH → then run:
+bash
+
+DB_PASS=$(az keyvault secret show --vault-name kv-claimssync-uae \
+  --name db-admin-password --query value -o tsv)
+
+psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" \
+  -f create_admin_users_v1.sql
+
+What each page does:
+FileRouteFeatureadmin/onboarding/[id]/page.tsx/admin/onboarding/:idFull request detail + Approve / Reject with notesreseller/onboarding/page.tsx/reseller/onboardingSaleem's submitted request list with statusreseller/facilities/[id]/page.tsx/reseller/facilities/:idPer-facility stats + 20-run historyadmin/resellers/page.tsx/admin/resellersAll resellers, levels, commission, facility countsadmin/facilities/page.tsx/admin/facilitiesAll facilities with search + status filteradmin/revenue/page.tsx/admin/revenueMRR/ARR + by-plan + by-reseller breakdowncreate_admin_users_v1.sqlDBSenthil + Karthi as non-super admins
+Note: the API endpoints /reseller/onboarding, /reseller/facilities/:id/runs, /admin/resellers, /admin/revenue need to exist in routers/reseller.py and routers/admin.py — do you want me to check those and add any missing endpoints before you build?
+
+
+psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" \
+  -f migration_v3.sql

@@ -1,0 +1,74 @@
+# =============================================================================
+# ClaimSync — Python Dependencies
+# =============================================================================
+# Project      : ClaimSync (Kaaryaa GenAI Solutions)
+# Updated      : March 2026 — Phase 2 (Engine Migration)
+# Python       : 3.12
+#
+# Standard library modules used (NOT listed here — built into Python):
+#   base64, configparser, datetime, errno, glob, os, pathlib,
+#   platform, re, shutil, subprocess, sys, time, zipfile
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# 1. PRODUCTION DEPENDENCIES (v8g / Phase 0 baseline)
+# -----------------------------------------------------------------------------
+
+# Symmetric encryption for INI credential fields (legacy admin menu only)
+cryptocode==0.1
+
+# TOTP / 2FA — admin authentication gate (askitsolsauthenticate)
+pyotp==2.9.0
+
+# QR code generation for TOTP onboarding (new client setup)
+qrcode==8.2
+
+# Human-friendly datetime — interval windowing, log timestamps
+arrow==1.4.0
+
+
+# -----------------------------------------------------------------------------
+# 2. PHASE 0 — httpx (P0-T04: replaces curl subprocess)
+# -----------------------------------------------------------------------------
+
+# Modern HTTP client — SOAP calls to Shafafiya API
+# Timeout: 60s connect / 120s read (configured in httpx_soap.py)
+httpx==0.28.1
+
+
+# -----------------------------------------------------------------------------
+# 3. PHASE 2 — AZURE STACK (P2-T01 / P2-T02 / P2-T03)
+# -----------------------------------------------------------------------------
+
+# PostgreSQL driver — DBConfigProvider reads tenant_facilities table
+# Replaces raw INI config reads. Used in db_config_provider.py
+psycopg2-binary==2.9.10
+
+# Azure Shared Identity — DefaultAzureCredential for all Azure services
+# Covers: Managed Identity (container), SP (CI/dev), AZ CLI (local)
+# Used by: KeyVaultCredentialProvider, AzureBlobStorageProvider,
+#          DBConfigProvider (PostgreSQL AAD token)
+azure-identity==1.21.0
+
+# Azure Key Vault — KeyVaultCredentialProvider fetches facility credentials
+# Replaces: INI userid / password / callerlicense fields
+azure-keyvault-secrets==4.9.0
+
+# Azure Blob Storage — AzureBlobStorageProvider uploads downloaded files
+# Replaces: local folder writes (claims / resubmission / remittance)
+azure-storage-blob==12.24.0
+
+
+# -----------------------------------------------------------------------------
+# 4. PHASE 3 — TENANT DASHBOARD (uncomment when starting Phase 3)
+# -----------------------------------------------------------------------------
+
+# FastAPI — tenant dashboard REST API backend
+# fastapi==0.115.0
+
+# Uvicorn — ASGI server for FastAPI
+# uvicorn[standard]==0.34.0
+
+# Azure Monitor OpenTelemetry — structured telemetry from FastAPI
+# azure-monitor-opentelemetry==1.6.4

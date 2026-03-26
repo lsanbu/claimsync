@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(az acr:*)",
+      "Bash(docker build:*)",
+      "Bash(docker push:*)",
+      "Bash(az containerapp:*)",
+      "Bash(curl:*)",
+      "Bash(python -m py_compile claimssync_api/routers/credentials.py)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}

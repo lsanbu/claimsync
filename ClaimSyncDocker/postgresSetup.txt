@@ -1,0 +1,456 @@
+# Install psql if not present (Cloud Shell — one-time)
+sudo apt-get install -y postgresql-client
+
+# Connect
+psql "host=claimssync-db.postgres.database.azure.com \
+      port=5432 \
+      dbname=claimssync \
+      user=claimsyncadmin \
+      sslmode=require"
+
+az postgres flexible-server create \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --name claimssync-db \
+  --location uaenorth \
+  --admin-user claimsyncadmin \
+  --admin-password "KaaryaaRAGGR@2026" \
+  --sku-name Standard_B2ms \
+  --tier Burstable \
+  --storage-size 32 \
+  --version 16 \
+  --zonal-resiliency Disabled \
+  --backup-retention 7 \
+  --geo-redundant-backup Disabled \
+  --public-access None \
+  --tags project=ClaimSync environment=prod owner=Kaaryaa cost-center=ClaimSync
+  
+  az postgres flexible-server update \
+  --name claimssync-db \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --admin-password "KaaryaaClaimSync@2026"
+  
+  
+  ## What We Have Confirmed ✅
+
+| Item | Value |
+|------|-------|
+| Host | `claimssync-db.postgres.database.azure.com` |
+| Admin user | `claimsyncadmin` |
+| Version | PostgreSQL 16 |
+| SKU | Standard_B2ms (Burstable) |
+| Location | UAE North |
+| Resource Group | `rg-claimssync-uaenorth-prod` |
+| Public access | None (private only) |
+
+Save the host FQDN — we'll need it repeatedly from P1-T04 onwards:
+```
+claimssync-db.postgres.database.azure.com
+
+Once you've rotated the password, we move to P1-T06 — Key Vault provisioning (I'm skipping ahead slightly — Key Vault needs to exist before we load the DB schema in P1-T04, because we'll store the DB password there too).
+Confirm password rotated and we'll continue. 🚀 Sonnet 4.6Extended
+
+anbu [ ~ ]$   az postgres flexible-server update \
+  --name claimssync-db \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --admin-password "KaaryaaClaimSync@2026"
+{
+  "administratorLogin": "claimsyncadmin",
+  "administratorLoginPassword": null,
+  "authConfig": {
+    "activeDirectoryAuth": "Disabled",
+    "passwordAuth": "Enabled",
+    "tenantId": null
+  },
+  "availabilityZone": "1",
+  "backup": {
+    "backupRetentionDays": 7,
+    "earliestRestoreDate": "2026-03-12T05:17:51.983767+00:00",
+    "geoRedundantBackup": "Disabled"
+  },
+  "cluster": null,
+  "createMode": null,
+  "dataEncryption": {
+    "geoBackupEncryptionKeyStatus": null,
+    "geoBackupKeyUri": null,
+    "geoBackupUserAssignedIdentityId": null,
+    "primaryEncryptionKeyStatus": null,
+    "primaryKeyUri": null,
+    "primaryUserAssignedIdentityId": null,
+    "type": "SystemManaged"
+  },
+  "fullyQualifiedDomainName": "claimssync-db.postgres.database.azure.com",
+  "highAvailability": {
+    "mode": "Disabled",
+    "standbyAvailabilityZone": null,
+    "state": "NotEnabled"
+  },
+  "id": "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.DBforPostgreSQL/flexibleServers/claimssync-db",
+  "identity": null,
+  "location": "UAE North",
+  "maintenanceWindow": {
+    "customWindow": "Disabled",
+    "dayOfWeek": 0,
+    "startHour": 0,
+    "startMinute": 0
+  },
+  "minorVersion": "11",
+  "name": "claimssync-db",
+  "network": {
+    "delegatedSubnetResourceId": null,
+    "privateDnsZoneArmResourceId": null,
+    "publicNetworkAccess": "Disabled"
+  },
+  "pointInTimeUtc": null,
+  "privateEndpointConnections": [],
+  "replica": {
+    "capacity": 5,
+    "promoteMode": null,
+    "promoteOption": null,
+    "replicationState": null,
+    "role": "Primary"
+  },
+  "replicaCapacity": 5,
+  "replicationRole": "Primary",
+  "resourceGroup": "rg-claimssync-uaenorth-prod",
+  "sku": {
+    "name": "Standard_B2ms",
+    "tier": "Burstable"
+  },
+  "sourceServerResourceId": null,
+  "state": "Ready",
+  "storage": {
+    "autoGrow": "Disabled",
+    "iops": 120,
+    "storageSizeGb": 32,
+    "throughput": null,
+    "tier": "P4",
+    "type": ""
+  },
+  "systemData": {
+    "createdAt": "2026-03-12T05:11:51.187565+00:00",
+    "createdBy": null,
+    "createdByType": null,
+    "lastModifiedAt": null,
+    "lastModifiedBy": null,
+    "lastModifiedByType": null
+  },
+  "tags": {
+    "cost-center": "ClaimSync",
+    "environment": "prod",
+    "owner": "Kaaryaa",
+    "project": "ClaimSync"
+  },
+  "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+  "version": "16"
+}
+anbu [ ~ ]$ 
+
+anbu [ ~ ]$ az provider register --namespace Microsoft.KeyVault --wait
+anbu [ ~ ]$ az keyvault create \
+  --name kv-claimssync-uae \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --location uaenorth \
+  --sku standard \
+  --enable-rbac-authorization true \
+  --retention-days 7 \
+  --tags project=ClaimSync environment=prod owner=Kaaryaa cost-center=ClaimSync
+{
+  "id": "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.KeyVault/vaults/kv-claimssync-uae",
+  "location": "uaenorth",
+  "name": "kv-claimssync-uae",
+  "properties": {
+    "accessPolicies": [],
+    "createMode": null,
+    "enablePurgeProtection": null,
+    "enableRbacAuthorization": true,
+    "enableSoftDelete": true,
+    "enabledForDeployment": false,
+    "enabledForDiskEncryption": false,
+    "enabledForTemplateDeployment": false,
+    "hsmPoolResourceId": null,
+    "networkAcls": null,
+    "privateEndpointConnections": null,
+    "provisioningState": "Succeeded",
+    "publicNetworkAccess": "Enabled",
+    "sku": {
+      "family": "A",
+      "name": "standard"
+    },
+    "softDeleteRetentionInDays": 7,
+    "tenantId": "4a8ec151-3c90-4516-95c5-4c60fe32d713",
+    "vaultUri": "https://kv-claimssync-uae.vault.azure.net/"
+  },
+  "resourceGroup": "rg-claimssync-uaenorth-prod",
+  "systemData": {
+    "createdAt": "2026-03-12T05:29:29.249000+00:00",
+    "createdBy": "lsanbu@gmail.com",
+    "createdByType": "User",
+    "lastModifiedAt": "2026-03-12T05:29:29.249000+00:00",
+    "lastModifiedBy": "lsanbu@gmail.com",
+    "lastModifiedByType": "User"
+  },
+  "tags": {
+    "cost-center": "ClaimSync",
+    "environment": "prod",
+    "owner": "Kaaryaa",
+    "project": "ClaimSync"
+  },
+  "type": "Microsoft.KeyVault/vaults"
+}
+anbu [ ~ ]$ 
+
+Validated Key Vault setup and charted credential loading roadmapValidated Key Vault setup and charted credential loading roadmap✅ P1-T06 DONE — Key Vault provisioned.
+ItemValueVault URIhttps://kv-claimssync-uae.vault.azure.net/RBAC auth✅ EnabledSoft delete✅ 7 days retentionPublic accessEnabled for now — locked down in P1-T12
+
+az role assignment create \
+  --role "Key Vault Secrets Officer" \
+  --assignee-object-id "76f95f48-e91c-4f7a-b5a2-0ef7ae191c21" \
+  --assignee-principal-type User \
+  --scope "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.KeyVault/vaults/kv-claimssync-uae"
+  
+anbu [ ~ ]$ az role assignment create \
+  --role "Key Vault Secrets Officer" \
+  --assignee-object-id "76f95f48-e91c-4f7a-b5a2-0ef7ae191c21" \
+  --assignee-principal-type User \
+  --scope "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.KeyVault/vaults/kv-claimssync-uae"
+{
+  "condition": null,
+  "conditionVersion": null,
+  "createdBy": null,
+  "createdOn": "2026-03-12T05:33:32.293936+00:00",
+  "delegatedManagedIdentityResourceId": null,
+  "description": null,
+  "id": "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.KeyVault/vaults/kv-claimssync-uae/providers/Microsoft.Authorization/roleAssignments/bcb05463-d25c-4f6d-8e3a-b4452472ffa5",
+  "name": "bcb05463-d25c-4f6d-8e3a-b4452472ffa5",
+  "principalId": "76f95f48-e91c-4f7a-b5a2-0ef7ae191c21",
+  "principalType": "User",
+  "resourceGroup": "rg-claimssync-uaenorth-prod",
+  "roleDefinitionId": "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/providers/Microsoft.Authorization/roleDefinitions/b86a8fe4-44ce-4948-aee5-eccb2c155cd7",
+  "scope": "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.KeyVault/vaults/kv-claimssync-uae",
+  "type": "Microsoft.Authorization/roleAssignments",
+  "updatedBy": "76f95f48-e91c-4f7a-b5a2-0ef7ae191c21",
+  "updatedOn": "2026-03-12T05:33:32.502936+00:00"
+}
+anbu [ ~ ]$ 
+
+az keyvault secret set \
+  --vault-name kv-claimssync-uae \
+  --name "db-admin-password" \
+  --value "KaaryaaClaimSync@2026"
+  
+ anbu [ ~ ]$ az keyvault secret set \
+  --vault-name kv-claimssync-uae \
+  --name "db-admin-password" \
+  --value "KaaryaaClaimSync@2026"
+{
+  "attributes": {
+    "created": "2026-03-12T05:35:27+00:00",
+    "enabled": true,
+    "expires": null,
+    "notBefore": null,
+    "recoverableDays": 7,
+    "recoveryLevel": "CustomizedRecoverable+Purgeable",
+    "updated": "2026-03-12T05:35:27+00:00"
+  },
+  "contentType": null,
+  "id": "https://kv-claimssync-uae.vault.azure.net/secrets/db-admin-password/3aaef24185ac492fa00b854c91e4e084",
+  "kid": null,
+  "managed": null,
+  "name": "db-admin-password",
+  "tags": {
+    "file-encoding": "utf-8"
+  },
+  "value": "KaaryaaClaimSync@2026"
+}
+anbu [ ~ ]$ 
+
+# MF2618 credentials
+az keyvault secret set \
+  --vault-name kv-claimssync-uae \
+  --name "facility-mf2618-userid" \
+  --value "USERID_FROM_INI"
+
+az keyvault secret set \
+  --vault-name kv-claimssync-uae \
+  --name "facility-mf2618-password" \
+  --value "PASSWORD_FROM_INI"
+
+az keyvault secret set \
+  --vault-name kv-claimssync-uae \
+  --name "facility-mf2618-caller-license" \
+  --value "CALLER_LICENSE_FROM_INI"
+
+# MF2618
+az keyvault secret set --vault-name kv-claimssync-uae --name "facility-mf2618-userid" --value "CRH234"
+az keyvault secret set --vault-name kv-claimssync-uae --name "facility-mf2618-password" --value "Rhhc@123456#"
+az keyvault secret set --vault-name kv-claimssync-uae --name "facility-mf2618-caller-license" --value "MF2618"
+
+# PF2576
+az keyvault secret set --vault-name kv-claimssync-uae --name "facility-pf2576-userid" --value "USERID_FROM_INI"
+az keyvault secret set --vault-name kv-claimssync-uae --name "facility-pf2576-password" --value "PASSWORD_FROM_INI"
+az keyvault secret set --vault-name kv-claimssync-uae --name "facility-pf2576-caller-license" --value "CALLER_LICENSE_FROM_INI"
+
+
+anbu [ ~ ]$ az keyvault secret set --vault-name kv-claimssync-uae --name "facility-mf2618-userid" --value "CRH234"
+az keyvault secret set --vault-name kv-claimssync-uae --name "facility-mf2618-password" --value "Rhhc@123456#"
+az keyvault secret set --vault-name kv-claimssync-uae --name "facility-mf2618-caller-license" --value "MF2618"
+{
+  "attributes": {
+    "created": "2026-03-12T05:58:54+00:00",
+    "enabled": true,
+    "expires": null,
+    "notBefore": null,
+    "recoverableDays": 7,
+    "recoveryLevel": "CustomizedRecoverable+Purgeable",
+    "updated": "2026-03-12T05:58:54+00:00"
+  },
+  "contentType": null,
+  "id": "https://kv-claimssync-uae.vault.azure.net/secrets/facility-mf2618-userid/bb09e6b2ba3e4c66bb874bfec4e48b2e",
+  "kid": null,
+  "managed": null,
+  "name": "facility-mf2618-userid",
+  "tags": {
+    "file-encoding": "utf-8"
+  },
+  "value": "CRH234"
+}
+{
+  "attributes": {
+    "created": "2026-03-12T05:58:57+00:00",
+    "enabled": true,
+    "expires": null,
+    "notBefore": null,
+    "recoverableDays": 7,
+    "recoveryLevel": "CustomizedRecoverable+Purgeable",
+    "updated": "2026-03-12T05:58:57+00:00"
+  },
+  "contentType": null,
+  "id": "https://kv-claimssync-uae.vault.azure.net/secrets/facility-mf2618-password/25908f94e4ab4b348d0a176e8296c345",
+  "kid": null,
+  "managed": null,
+  "name": "facility-mf2618-password",
+  "tags": {
+    "file-encoding": "utf-8"
+  },
+  "value": "Rhhc@123456#"
+}
+{
+  "attributes": {
+    "created": "2026-03-12T05:58:59+00:00",
+    "enabled": true,
+    "expires": null,
+    "notBefore": null,
+    "recoverableDays": 7,
+    "recoveryLevel": "CustomizedRecoverable+Purgeable",
+    "updated": "2026-03-12T05:58:59+00:00"
+  },
+  "contentType": null,
+  "id": "https://kv-claimssync-uae.vault.azure.net/secrets/facility-mf2618-caller-license/b3b39573bc55456aa61e7ddcfecfad22",
+  "kid": null,
+  "managed": null,
+  "name": "facility-mf2618-caller-license",
+  "tags": {
+    "file-encoding": "utf-8"
+  },
+  "value": "MF2618"
+}
+anbu [ ~ ]$ 
+
+anbu [ ~ ]$ az keyvault secret list \
+  --vault-name kv-claimssync-uae \
+  --query "[].{Name:name, Created:attributes.created}" \
+  -o table
+Name                            Created
+------------------------------  -------------------------
+db-admin-password               2026-03-12T05:35:27+00:00
+facility-mf2618-caller-license  2026-03-12T05:58:59+00:00
+facility-mf2618-password        2026-03-12T05:58:57+00:00
+facility-mf2618-userid          2026-03-12T05:58:54+00:00
+anbu [ ~ ]$ 
+
+
+az storage container create --name claimssync-mf2618 --account-name stclaimssyncuae --auth-mode login
+az storage container create --name claimssync-pf2576 --account-name stclaimssyncuae --auth-mode login
+az storage container create --name claimssync-temp   --account-name stclaimssyncuae --auth-mode login
+
+anbu [ ~ ]$ az monitor log-analytics workspace list \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --query "[].{Name:name, ID:customerId}" \
+  -o table
+Name                                    ID
+--------------------------------------  ------------------------------------
+workspace-rgclaimssyncuaenorthprodRp53  eb4827b3-0541-4fc4-991d-70d733e1c092
+anbu [ ~ ]$ 
+
+
+az monitor app-insights component create \
+  --app ai-claimssync-uae \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --location uaenorth \
+  --kind web \
+  --workspace "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.OperationalInsights/workspaces/workspace-rgclaimssyncuaenorthprodRp53" \
+  --tags project=ClaimSync environment=prod owner=Kaaryaa cost-center=ClaimSync
+  
+✅ P1-T10 DONE — Application Insights provisioned.
+Item					Value
+Name					ai-claimssync-uae
+Instrumentation Key		6d6b4002-4e78-4628-b710-1a3585901dca
+Ingestion				UAE North endpoint ✅
+Linked Workspace		workspace-rgclaimssyncuaenorthprodRp53 ✅
+Retention				90 days
+
+✅ Managed Identity created.
+ItemValuePrincipal ID	b4d293ed-da18-423e-a041-296fdc27b8ad
+Client ID				8e309ea2-175e-497e-8849-7af81a36c62a
+
+
+# 1. Key Vault — read secrets (credentials at runtime)
+az role assignment create \
+  --role "Key Vault Secrets User" \
+  --assignee-object-id "b4d293ed-da18-423e-a041-296fdc27b8ad" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.KeyVault/vaults/kv-claimssync-uae"
+
+# 2. Blob Storage — read/write claim files
+az role assignment create \
+  --role "Storage Blob Data Contributor" \
+  --assignee-object-id "b4d293ed-da18-423e-a041-296fdc27b8ad" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.Storage/storageAccounts/stclaimssyncuae"
+
+# 3. Container Registry — pull images
+az role assignment create \
+  --role "AcrPull" \
+  --assignee-object-id "b4d293ed-da18-423e-a041-296fdc27b8ad" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "/subscriptions/ec12e27e-1ef9-46e9-8817-46a10b197381/resourceGroups/rg-claimssync-uaenorth-prod/providers/Microsoft.ContainerRegistry/registries/crclaimssync"
+  
+  }
+anbu [ ~ ]$ curl -s https://api.ipify.org
+4.247.135.109
+anbu [ ~ ]$ 
+  
+az postgres flexible-server firewall-rule create --resource-group rg-claimssync-uaenorth-prod --name claimssync-db --rule-name temp-cloudshell-access --start-ip-address 4.247.135.109 --end-ip-address 4.247.135.109
+  
+  
+  set CLAIMSSYNC_DB_DSN="host=claimssync-db.postgres.database.azure.com port=5432 dbname=postgres user=claimsyncadmin password=KaaryaaClaimSync@2026 sslmode=require"
+  
+az postgres flexible-server update --resource-group rg-claimssync-uaenorth-prod --name claimssync-db --public-access Enabled
+az postgres flexible-server firewall-rule create --resource-group rg-claimssync-uaenorth-prod --name claimssync-db --rule-name temp-anbu-dev --start-ip-address 49.37.210.192 --end-ip-address 49.37.210.192
+
+
+anbu [ ~ ]$ az containerapp job execution show --name job-claimssync-engine --resource-group rg-claimssync-uaenorth-prod --job-execution-name job-claimssync-engine-muj5iuf --query "properties.status" -o tsv
+Failed
+anbu [ ~ ]$ az containerapp job execution logs show --name job-claimssync-engine --resource-group rg-claimssync-uaenorth-prod --job-execution-name job-claimssync-engine-muj5iuf --container job-claimssync-engine
+'logs' is misspelled or not recognized by the system.
+
+Examples from AI knowledge base:
+https://aka.ms/cli_ref
+Read more about the command in reference docs
+anbu [ ~ ]$ 
+
+
+anbu [ ~ ]$ az monitor log-analytics query   --workspace eb4827b3-0541-4fc4-991d-70d733e1c092   --analytics-query "ContainerAppConsoleLogs_CL | where TimeGenerated > ago(10m) | where ContainerJobName_s == 'job-claimssync-engine' | order by TimeGenerated asc | project TimeGenerated, Stream_s, Log_s"   --output table
+
+docker build -t crclaimssync.azurecr.io/claimsync-engine:2.12 .
+docker push crclaimssync.azurecr.io/claimsync-engine:2.12

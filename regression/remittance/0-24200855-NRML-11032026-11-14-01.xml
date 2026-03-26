@@ -1,0 +1,134 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Remittance.Advice xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:tns="http://www.haad.ae/DataDictionary/CommonTypes">
+  <Header>
+    <SenderID>A001</SenderID>
+    <ReceiverID>MF2618</ReceiverID>
+    <TransactionDate>11/03/2026 11:14</TransactionDate>
+    <RecordCount>2</RecordCount>
+    <DispositionFlag>PRODUCTION</DispositionFlag>
+  </Header>
+  <Claim>
+    <ID>C3181978</ID>
+    <IDPayer>212532083833</IDPayer>
+    <ProviderID>MF2618</ProviderID>
+    <PaymentReference>ZEROMNI1032025</PaymentReference>
+    <DateSettlement>10/03/2026 11:17</DateSettlement>
+    <Encounter>
+      <FacilityID>MF2618</FacilityID>
+    </Encounter>
+    <Activity>
+      <ID>1</ID>
+      <Start>30/10/2025 11:45</Start>
+      <Type>3</Type>
+      <Code>97140</Code>
+      <Quantity>1</Quantity>
+      <Net>54</Net>
+      <OrderingClinician>GD9970</OrderingClinician>
+      <Clinician>GT25508</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+    <Activity>
+      <ID>2</ID>
+      <Start>30/10/2025 12:01</Start>
+      <Type>3</Type>
+      <Code>97110</Code>
+      <Quantity>1</Quantity>
+      <Net>58</Net>
+      <OrderingClinician>GD9970</OrderingClinician>
+      <Clinician>GT25508</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+    <Activity>
+      <ID>3</ID>
+      <Start>30/10/2025 12:10</Start>
+      <Type>3</Type>
+      <Code>97014</Code>
+      <Quantity>1</Quantity>
+      <Net>29</Net>
+      <OrderingClinician>GD9970</OrderingClinician>
+      <Clinician>GT25508</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+    <Activity>
+      <ID>4</ID>
+      <Start>30/10/2025 12:26</Start>
+      <Type>3</Type>
+      <Code>97026</Code>
+      <Quantity>1</Quantity>
+      <Net>22</Net>
+      <OrderingClinician>GD9970</OrderingClinician>
+      <Clinician>GT25508</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+  </Claim>
+  <Claim>
+    <ID>C3180830</ID>
+    <IDPayer>212532107256</IDPayer>
+    <ProviderID>MF2618</ProviderID>
+    <PaymentReference>ZEROMNI1032025</PaymentReference>
+    <DateSettlement>10/03/2026 11:17</DateSettlement>
+    <Encounter>
+      <FacilityID>MF2618</FacilityID>
+    </Encounter>
+    <Activity>
+      <ID>1</ID>
+      <Start>29/10/2025 12:10</Start>
+      <Type>3</Type>
+      <Code>97140</Code>
+      <Quantity>1</Quantity>
+      <Net>54</Net>
+      <OrderingClinician>GD9970</OrderingClinician>
+      <Clinician>GT25508</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+    <Activity>
+      <ID>2</ID>
+      <Start>29/10/2025 12:26</Start>
+      <Type>3</Type>
+      <Code>97110</Code>
+      <Quantity>1</Quantity>
+      <Net>58</Net>
+      <OrderingClinician>GD9970</OrderingClinician>
+      <Clinician>GT25508</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+    <Activity>
+      <ID>3</ID>
+      <Start>29/10/2025 12:35</Start>
+      <Type>3</Type>
+      <Code>97014</Code>
+      <Quantity>1</Quantity>
+      <Net>29</Net>
+      <OrderingClinician>GD9970</OrderingClinician>
+      <Clinician>GT25508</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+    <Activity>
+      <ID>4</ID>
+      <Start>29/10/2025 12:51</Start>
+      <Type>3</Type>
+      <Code>97026</Code>
+      <Quantity>1</Quantity>
+      <Net>22</Net>
+      <OrderingClinician>GD9970</OrderingClinician>
+      <Clinician>GT25508</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+  </Claim>
+</Remittance.Advice>

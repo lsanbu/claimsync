@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(az acr:*)",
+      "Bash(docker build:*)",
+      "Bash(docker push:*)",
+      "Bash(az containerapp:*)"
+    ]
+  }
+}

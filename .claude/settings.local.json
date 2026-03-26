@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker push:*)",
+      "Bash(az acr:*)",
+      "Bash(az containerapp:*)",
+      "Bash(docker build:*)",
+      "Bash(curl:*)",
+      "Bash(find D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncDocker -name ClaimSync2*.py -newer D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncDocker/ClaimSync2.py)",
+      "Bash(docker images:*)",
+      "Bash(az role:*)",
+      "Bash(az account:*)",
+      "Bash(az config:*)",
+      "Bash(az extension:*)",
+      "Bash(az keyvault:*)",
+      "Bash(az monitor:*)",
+      "Bash(PGPASSWORD='ClaimSync@DB2026!' psql -h claimssync-db.postgres.database.azure.com -U claimsyncadmin -d postgres -c \"SELECT tf.facility_code, tf.status, sp.code AS provider_code, sp.is_active FROM claimssync.tenant_facilities tf LEFT JOIN claimssync.service_providers sp ON sp.provider_id = tf.service_provider_id ORDER BY tf.facility_code;\" 2>&1)",
+      "Bash(python:*)",
+      "Bash(az storage:*)"
+    ]
+  }
+}

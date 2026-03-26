@@ -1,0 +1,390 @@
+ou are trying to change the compute or the size of storage assigned to your server in a way that             requires a server restart. During the restart, you'll experience some downtime of the server. Do you want to proceed? (y/n): y
+
+DB downsized ✓
+anbu [ ~ ]$ 
+anbu [ ~ ]$ az postgres flexible-server show \
+  --name claimssync-db \
+  --resource-group rg-claimssync-uaenorth-prod \
+  --query "{sku:sku.name, tier:sku.tier, state:state}" \
+  --output table
+Sku            Tier       State
+-------------  ---------  -------
+Standard_B1ms  Burstable  Ready
+anbu [ ~ ]$ curl -s https://ca-claimssync-api.whitewater-45edc27c.uaenorth.azurecontainerapps.io/health | python3 -m json.tool
+{
+    "status": "ok",
+    "version": "1.0",
+    "build": "1.0"
+}
+anbu [ ~ ]$ # Cloud Shell — backup existing secrets
+az keyvault secret show --vault-name kv-claimssync-uae \
+  --name facility-mf2618-userid --query value -o tsv
+
+az keyvault secret show --vault-name kv-claimssync-uae \
+  --name facility-mf2618-password --query value -o tsv
+
+az keyvault secret show --vault-name kv-claimssync-uae \
+  --name facility-mf2618-caller-license --query value -o tsv
+CRH234
+Rhhc@123456#
+MF2618
+anbu [ ~ ]$ 
+
+
+anbu [ ~ ]$ psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" \
+  -c "\dt claimssync.*"
+                      List of relations
+   Schema   |          Name          | Type  |     Owner      
+------------+------------------------+-------+----------------
+ claimssync | facility_subscriptions | table | claimsyncadmin
+ claimssync | file_manifest          | table | claimsyncadmin
+ claimssync | kaaryaa_admins         | table | claimsyncadmin
+ claimssync | onboarding_requests    | table | claimsyncadmin
+ claimssync | resellers              | table | claimsyncadmin
+ claimssync | service_providers      | table | claimsyncadmin
+ claimssync | subscription_plans     | table | claimsyncadmin
+ claimssync | sync_run_intervals     | table | claimsyncadmin
+ claimssync | sync_run_log           | table | claimsyncadmin
+ claimssync | sync_schedules         | table | claimsyncadmin
+ claimssync | tenant_facilities      | table | claimsyncadmin
+ claimssync | tenants                | table | claimsyncadmin
+(12 rows)
+
+anbu [ ~ ]$ 
+
+anbu [ ~ ]$ psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" << 'EOF'
+SET search_path = claimssync;
+
+-- Tenants table columns
+\d tenants
+
+-- Onboarding requests table columns  
+\d onboarding_requests
+
+-- KV secrets backup - MF2618
+SELECT facility_code, kv_secret_prefix, blob_container, status 
+FROM tenant_facilities;
+EOF
+SET
+                                                                Table "claimssync.tenants"
+       Column        |           Type           | Collation | Nullable |                                     Default                                      
+---------------------+--------------------------+-----------+----------+----------------------------------------------------------------------------------
+ tenant_id           | uuid                     |           | not null | gen_random_uuid()
+ reseller_id         | uuid                     |           |          | 
+ name                | character varying(200)   |           | not null | 
+ short_code          | character varying(20)    |           | not null | 
+ legal_name          | character varying(300)   |           |          | 
+ contact_name        | character varying(200)   |           |          | 
+ contact_email       | character varying(255)   |           |          | 
+ contact_phone       | character varying(30)    |           |          | 
+ timezone            | character varying(50)    |           | not null | 'Asia/Dubai'::character varying
+ country             | character varying(10)    |           | not null | 'UAE'::character varying
+ emirate             | character varying(50)    |           |          | 
+ is_multi_sp_enabled | boolean                  |           | not null | false
+ api_key             | character varying(64)    |           | not null | replace(gen_random_uuid()::text || gen_random_uuid()::text, '-'::text, ''::text)
+ status              | character varying(20)    |           | not null | 'active'::character varying
+ notes               | text                     |           |          | 
+ created_at          | timestamp with time zone |           | not null | now()
+ updated_at          | timestamp with time zone |           | not null | now()
+Indexes:
+    "tenants_pkey" PRIMARY KEY, btree (tenant_id)
+    "idx_tenants_reseller" btree (reseller_id)
+    "tenants_api_key_key" UNIQUE CONSTRAINT, btree (api_key)
+    "tenants_short_code_key" UNIQUE CONSTRAINT, btree (short_code)
+Check constraints:
+    "tenants_status_check" CHECK (status::text = ANY (ARRAY['active'::character varying, 'suspended'::character varying, 'cancelled'::character varying]::text[]))
+Foreign-key constraints:
+    "tenants_reseller_id_fkey" FOREIGN KEY (reseller_id) REFERENCES resellers(reseller_id)
+Referenced by:
+    TABLE "onboarding_requests" CONSTRAINT "onboarding_requests_tenant_id_fkey" FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+    TABLE "tenant_facilities" CONSTRAINT "tenant_facilities_tenant_id_fkey" FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+Triggers:
+    trg_tenants_updated_at BEFORE UPDATE ON tenants FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+
+                               Table "claimssync.onboarding_requests"
+       Column        |           Type           | Collation | Nullable |          Default           
+---------------------+--------------------------+-----------+----------+----------------------------
+ request_id          | uuid                     |           | not null | gen_random_uuid()
+ reseller_id         | uuid                     |           | not null | 
+ service_provider_id | uuid                     |           | not null | 
+ tenant_name         | character varying(200)   |           | not null | 
+ tenant_short_code   | character varying(20)    |           | not null | 
+ tenant_emirate      | character varying(50)    |           |          | 
+ tenant_country      | character varying(10)    |           | not null | 'UAE'::character varying
+ contact_name        | character varying(200)   |           | not null | 
+ contact_email       | character varying(255)   |           | not null | 
+ contact_phone       | character varying(30)    |           |          | 
+ proposed_facilities | jsonb                    |           | not null | '[]'::jsonb
+ requested_plan_code | character varying(30)    |           |          | 
+ status              | character varying(20)    |           | not null | 'draft'::character varying
+ submitted_at        | timestamp with time zone |           |          | 
+ reseller_notes      | text                     |           |          | 
+ reviewed_by         | character varying(200)   |           |          | 
+ reviewed_at         | timestamp with time zone |           |          | 
+ review_notes        | text                     |           |          | 
+ approved_at         | timestamp with time zone |           |          | 
+ trial_days_granted  | integer                  |           | not null | 30
+ tenant_id           | uuid                     |           |          | 
+ rejection_reason    | text                     |           |          | 
+ created_at          | timestamp with time zone |           | not null | now()
+ updated_at          | timestamp with time zone |           | not null | now()
+Indexes:
+    "onboarding_requests_pkey" PRIMARY KEY, btree (request_id)
+    "idx_onboarding_reseller" btree (reseller_id)
+    "idx_onboarding_status" btree (status)
+    "idx_onboarding_tenant" btree (tenant_id)
+Check constraints:
+    "onboarding_requests_status_check" CHECK (status::text = ANY (ARRAY['draft'::character varying, 'submitted'::character varying, 'reviewing'::character varying, 'approved'::character varying, 'rejected'::character varying, 'cancelled'::character varying]::text[]))
+Foreign-key constraints:
+    "onboarding_requests_reseller_id_fkey" FOREIGN KEY (reseller_id) REFERENCES resellers(reseller_id)
+    "onboarding_requests_service_provider_id_fkey" FOREIGN KEY (service_provider_id) REFERENCES service_providers(provider_id)
+    "onboarding_requests_tenant_id_fkey" FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+Triggers:
+    trg_onboarding_transition BEFORE UPDATE ON onboarding_requests FOR EACH ROW EXECUTE FUNCTION check_onboarding_transition()
+    trg_onboarding_updated_at BEFORE UPDATE ON onboarding_requests FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+
+ facility_code | kv_secret_prefix |  blob_container   |  status  
+---------------+------------------+-------------------+----------
+ MF2618        | facility-mf2618  | claimssync-mf2618 | active
+ PF2576        | facility-pf2576  | claimssync-pf2576 | inactive
+(2 rows)
+
+anbu [ ~ ]$ 
+
+ClaimSync — End-to-End Onboarding Flow Test
+============================================
+Goal: Test the full onboarding flow using MF2618 as the test 
+facility. We temporarily deactivate it, re-onboard it fresh via 
+the reseller portal, approve via admin portal, verify everything 
+provisions correctly, then restore.
+
+ENVIRONMENT:
+- DB: claimssync-db.postgres.database.azure.com
+  dbname=postgres, schema=claimssync, user=claimsyncadmin
+  Password from: az keyvault secret show --vault-name kv-claimssync-uae --name db-admin-password --query value -o tsv
+- Dashboard URL: https://ca-claimssync-dashboard.whitewater-45edc27c.uaenorth.azurecontainerapps.io
+- API URL: https://ca-claimssync-api.whitewater-45edc27c.uaenorth.azurecontainerapps.io
+- KV: kv-claimssync-uae
+
+CREDENTIALS:
+- Admin:    anbu@kaaryaa.com / Kaaryaa@Admin2026
+- Reseller: saleem@claimsync.cloud / ClaimSync@Saleem2026
+
+DB KEY FACTS (already verified):
+- facilities table = claimssync.tenant_facilities
+- onboarding PK = request_id (uuid, not id)
+- tenants name column = name (not tenant_name)
+- MF2618 facility_id = 2b669b8c-543a-4f2d-a820-9b3126d8cbb2
+- MF2618 kv_secret_prefix = facility-mf2618
+- MF2618 blob_container = claimssync-mf2618
+
+=============================================
+PHASE 1 — BACKUP (Cloud Shell, run first)
+=============================================
+
+Run these and save outputs to a safe notepad:
+
+DB_PASS=$(az keyvault secret show --vault-name kv-claimssync-uae \
+  --name db-admin-password --query value -o tsv)
+
+# Backup KV secrets
+echo "USERID:" && az keyvault secret show \
+  --vault-name kv-claimssync-uae \
+  --name facility-mf2618-userid --query value -o tsv
+
+echo "PASSWORD:" && az keyvault secret show \
+  --vault-name kv-claimssync-uae \
+  --name facility-mf2618-password --query value -o tsv
+
+echo "CALLER-LICENSE:" && az keyvault secret show \
+  --vault-name kv-claimssync-uae \
+  --name facility-mf2618-caller-license --query value -o tsv
+
+# Backup DB row
+psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" \
+  -c "SELECT * FROM claimssync.tenant_facilities WHERE facility_code='MF2618';"
+
+=============================================
+PHASE 2 — DEACTIVATE MF2618 (Cloud Shell)
+=============================================
+
+psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" << 'EOF'
+SET search_path = claimssync;
+
+-- Temporarily deactivate MF2618 for test
+UPDATE tenant_facilities 
+SET status = 'inactive', updated_at = NOW()
+WHERE facility_code = 'MF2618';
+
+-- Verify
+SELECT facility_code, status FROM tenant_facilities;
+EOF
+
+=============================================
+PHASE 3 — SUBMIT ONBOARDING (Browser)
+=============================================
+
+1. Open browser → /reseller/login
+   Login: saleem@claimsync.cloud / ClaimSync@Saleem2026
+
+2. Go to /reseller/onboard (or click "+ New Facility")
+
+3. Fill in the wizard:
+   - Facility Code: MF2618
+   - Facility Name: Mediclinic — Facility MF2618
+   - Facility Type: Hospital
+   - Emirate: Abu Dhabi
+   - Contact Name: Saleem
+   - Contact Email: saleem@claimsync.cloud
+   - Plan: Starter
+   - Credentials: YES (provide userid/password/caller-license 
+     from your Phase 1 backup)
+   - Notes: "End-to-end test run"
+
+4. Submit the request
+
+5. Verify it appears in /reseller/onboarding with status "submitted"
+
+=============================================
+PHASE 4 — VERIFY REQUEST IN DB (Cloud Shell)
+=============================================
+
+psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" << 'EOF'
+SET search_path = claimssync;
+
+SELECT request_id, tenant_name, status, 
+       proposed_facilities, submitted_at
+FROM onboarding_requests
+ORDER BY created_at DESC
+LIMIT 3;
+EOF
+
+-- Should show new request with status='submitted'
+
+=============================================
+PHASE 5 — APPROVE (Browser)
+=============================================
+
+1. Open new tab → /admin/login
+   Login: anbu@kaaryaa.com / Kaaryaa@Admin2026
+
+2. Go to /admin/onboarding
+   → Should see the submitted request from Saleem
+
+3. Click on the request → /admin/onboarding/:id
+
+4. Review details, add note: "Test approval - E2E flow"
+   Set trial days: 30
+   Click "Approve & Provision"
+
+5. Verify status changes to "approved"
+
+=============================================
+PHASE 6 — VERIFY PROVISIONING (Cloud Shell)
+=============================================
+
+psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" << 'EOF'
+SET search_path = claimssync;
+
+-- Check onboarding request status
+SELECT request_id, status, approved_at, 
+       reviewed_by, review_notes, tenant_id
+FROM onboarding_requests
+ORDER BY created_at DESC LIMIT 3;
+
+-- Check if new tenant was created
+SELECT tenant_id, name, short_code, status
+FROM tenants
+ORDER BY created_at DESC LIMIT 5;
+
+-- Check if facility was re-provisioned
+SELECT facility_code, facility_name, status, 
+       kv_secret_prefix, blob_container
+FROM tenant_facilities
+ORDER BY created_at DESC;
+EOF
+
+-- Also verify KV secrets still intact
+az keyvault secret show \
+  --vault-name kv-claimssync-uae \
+  --name facility-mf2618-userid --query value -o tsv
+
+=============================================
+PHASE 7 — RESTORE MF2618 (Cloud Shell)
+=============================================
+-- Run this after test is complete to restore production state
+
+psql "host=claimssync-db.postgres.database.azure.com \
+  dbname=postgres user=claimsyncadmin \
+  password=${DB_PASS} sslmode=require" << 'EOF'
+SET search_path = claimssync;
+
+-- Restore MF2618 to active
+UPDATE tenant_facilities 
+SET status = 'active', updated_at = NOW()
+WHERE facility_code = 'MF2618';
+
+-- Clean up test onboarding requests (keep only original)
+DELETE FROM onboarding_requests 
+WHERE status = 'approved' 
+AND review_notes LIKE '%Test approval%';
+
+-- Final state check
+SELECT facility_code, status FROM tenant_facilities;
+SELECT COUNT(*) as onboarding_count FROM onboarding_requests;
+EOF
+
+=============================================
+EXPECTED OUTCOMES AT END:
+=============================================
+✅ Onboarding request submitted by Saleem → visible in DB
+✅ Request visible in /admin/onboarding list
+✅ Approve flow works → status = approved
+✅ /reseller/onboarding shows approved status for Saleem
+✅ MF2618 restored to active
+✅ KV secrets intact
+✅ Engine cron at 06:00 UAE picks up MF2618 normally tomorrow
+
+ROLLBACK IF ANYTHING GOES WRONG:
+-- Restore MF2618 immediately
+UPDATE claimssync.tenant_facilities 
+SET status = 'active' 
+WHERE facility_code = 'MF2618';
+
+-- KV secrets are never deleted in this test — always safe
+
+
+anbu [ ~ ]$ DB_PASS=$(az keyvault secret show --vault-name kv-claimssync-uae \
+  --name db-admin-password --query value -o tsv)
+
+echo "USERID:" && az keyvault secret show \
+  --vault-name kv-claimssync-uae \
+  --name facility-mf2618-userid --query value -o tsv
+
+echo "PASSWORD:" && az keyvault secret show \
+  --vault-name kv-claimssync-uae \
+  --name facility-mf2618-password --query value -o tsv
+
+echo "CALLER-LICENSE:" && az keyvault secret show \
+  --vault-name kv-claimssync-uae \
+  --name facility-mf2618-caller-license --query value -o tsv
+USERID:
+CRH234
+PASSWORD:
+Rhhc@123456#
+CALLER-LICENSE:
+MF2618
+anbu [ ~ ]$ 
+

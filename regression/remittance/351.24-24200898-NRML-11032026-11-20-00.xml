@@ -1,0 +1,140 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Remittance.Advice xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:tns="http://www.haad.ae/DataDictionary/CommonTypes">
+  <Header>
+    <SenderID>A001</SenderID>
+    <ReceiverID>MF2618</ReceiverID>
+    <TransactionDate>11/03/2026 11:20</TransactionDate>
+    <RecordCount>2</RecordCount>
+    <DispositionFlag>PRODUCTION</DispositionFlag>
+  </Header>
+  <Claim>
+    <ID>C3164184</ID>
+    <IDPayer>212530527436</IDPayer>
+    <ProviderID>MF2618</ProviderID>
+    <PaymentReference>52414795</PaymentReference>
+    <DateSettlement>30/01/2026 00:00</DateSettlement>
+    <Encounter>
+      <FacilityID>MF2618</FacilityID>
+    </Encounter>
+    <Activity>
+      <ID>2</ID>
+      <Start>05/10/2025 17:37</Start>
+      <Type>3</Type>
+      <Code>20610</Code>
+      <Quantity>1</Quantity>
+      <Net>235.3</Net>
+      <List>235.3</List>
+      <OrderingClinician>GD42851</OrderingClinician>
+      <Clinician>GD42851</Clinician>
+      <Gross>235.3</Gross>
+      <PatientShare>47.06</PatientShare>
+      <PaymentAmount>188.24</PaymentAmount>
+      <DenialCode>PRCE-001</DenialCode>
+    </Activity>
+    <Activity>
+      <ID>1</ID>
+      <Start>05/10/2025 17:37</Start>
+      <Type>3</Type>
+      <Code>99214</Code>
+      <Quantity>1</Quantity>
+      <Net>0</Net>
+      <List>193.2</List>
+      <OrderingClinician>GD42851</OrderingClinician>
+      <Clinician>GD42851</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+    </Activity>
+    <Activity>
+      <ID>3</ID>
+      <Start>05/10/2025 17:37</Start>
+      <Type>5</Type>
+      <Code>G05-2931-03391-03</Code>
+      <Quantity>1</Quantity>
+      <Net>0</Net>
+      <List>5.5</List>
+      <OrderingClinician>GD42851</OrderingClinician>
+      <Clinician>GD42851</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+    </Activity>
+    <Activity>
+      <ID>4</ID>
+      <Start>05/10/2025 17:37</Start>
+      <Type>5</Type>
+      <Code>K45-1285-03746-01</Code>
+      <Quantity>1</Quantity>
+      <Net>0</Net>
+      <List>10.5</List>
+      <OrderingClinician>GD42851</OrderingClinician>
+      <Clinician>GD42851</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+    </Activity>
+  </Claim>
+  <Claim>
+    <ID>C3166213</ID>
+    <IDPayer>212530451060</IDPayer>
+    <ProviderID>MF2618</ProviderID>
+    <PaymentReference>52414795</PaymentReference>
+    <DateSettlement>30/01/2026 00:00</DateSettlement>
+    <Encounter>
+      <FacilityID>MF2618</FacilityID>
+    </Encounter>
+    <Activity>
+      <ID>1</ID>
+      <Start>07/10/2025 14:05</Start>
+      <Type>3</Type>
+      <Code>97140</Code>
+      <Quantity>1</Quantity>
+      <Net>54</Net>
+      <List>54</List>
+      <OrderingClinician>GD42851</OrderingClinician>
+      <Clinician>GT17496</Clinician>
+      <Gross>54</Gross>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>54</PaymentAmount>
+    </Activity>
+    <Activity>
+      <ID>2</ID>
+      <Start>07/10/2025 14:21</Start>
+      <Type>3</Type>
+      <Code>97110</Code>
+      <Quantity>1</Quantity>
+      <Net>58</Net>
+      <List>58</List>
+      <OrderingClinician>GD42851</OrderingClinician>
+      <Clinician>GT17496</Clinician>
+      <Gross>58</Gross>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>58</PaymentAmount>
+    </Activity>
+    <Activity>
+      <ID>3</ID>
+      <Start>07/10/2025 14:46</Start>
+      <Type>3</Type>
+      <Code>97014</Code>
+      <Quantity>1</Quantity>
+      <Net>29</Net>
+      <List>29</List>
+      <OrderingClinician>GD42851</OrderingClinician>
+      <Clinician>GT17496</Clinician>
+      <Gross>29</Gross>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>29</PaymentAmount>
+    </Activity>
+    <Activity>
+      <ID>4</ID>
+      <Start>07/10/2025 14:31</Start>
+      <Type>3</Type>
+      <Code>97026</Code>
+      <Quantity>1</Quantity>
+      <Net>22</Net>
+      <List>22</List>
+      <OrderingClinician>GD42851</OrderingClinician>
+      <Clinician>GT17496</Clinician>
+      <Gross>22</Gross>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>22</PaymentAmount>
+    </Activity>
+  </Claim>
+</Remittance.Advice>

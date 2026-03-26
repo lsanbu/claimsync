@@ -1,0 +1,68 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Remittance.Advice xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:tns="http://www.haad.ae/DataDictionary/CommonTypes">
+  <Header>
+    <SenderID>D001</SenderID>
+    <ReceiverID>MF2618</ReceiverID>
+    <TransactionDate>11/03/2026 11:12</TransactionDate>
+    <RecordCount>2</RecordCount>
+    <DispositionFlag>PRODUCTION</DispositionFlag>
+  </Header>
+  <Claim>
+    <ID>C3201070</ID>
+    <IDPayer>502534226320</IDPayer>
+    <ProviderID>MF2618</ProviderID>
+    <PaymentReference>ZEROMNI1032025</PaymentReference>
+    <DateSettlement>10/03/2026 11:17</DateSettlement>
+    <Encounter>
+      <FacilityID>MF2618</FacilityID>
+    </Encounter>
+    <Activity>
+      <ID>1</ID>
+      <Start>25/11/2025 15:52</Start>
+      <Type>3</Type>
+      <Code>99203</Code>
+      <Quantity>0</Quantity>
+      <Net>284</Net>
+      <OrderingClinician>GD9821</OrderingClinician>
+      <Clinician>GD9821</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-006</DenialCode>
+    </Activity>
+  </Claim>
+  <Claim>
+    <ID>C3202268</ID>
+    <IDPayer>502534440822</IDPayer>
+    <ProviderID>MF2618</ProviderID>
+    <PaymentReference>ZEROMNI1032025</PaymentReference>
+    <DateSettlement>10/03/2026 11:17</DateSettlement>
+    <Encounter>
+      <FacilityID>MF2618</FacilityID>
+    </Encounter>
+    <Activity>
+      <ID>1</ID>
+      <Start>27/11/2025 10:30</Start>
+      <Type>3</Type>
+      <Code>99203</Code>
+      <Quantity>0</Quantity>
+      <Net>284</Net>
+      <OrderingClinician>GD43875</OrderingClinician>
+      <Clinician>GD43875</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+      <DenialCode>ELIG-001</DenialCode>
+    </Activity>
+    <Activity>
+      <ID>2</ID>
+      <Start>27/11/2025 10:30</Start>
+      <Type>3</Type>
+      <Code>99203</Code>
+      <Quantity>0</Quantity>
+      <Net>0</Net>
+      <OrderingClinician>GD43875</OrderingClinician>
+      <Clinician>GD43875</Clinician>
+      <PatientShare>0</PatientShare>
+      <PaymentAmount>0</PaymentAmount>
+    </Activity>
+  </Claim>
+</Remittance.Advice>
