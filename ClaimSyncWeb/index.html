@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClaimSync — Shafafiya Claims Automation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --midnight: #080E1A;
+  --navy: #0D1829;
+  --navy-mid: #152035;
+  --navy-light: #1E2F4A;
+  --gold: #C9A84C;
+  --gold-light: #E8C97A;
+  --gold-dim: rgba(201,168,76,0.15);
+  --teal: #1B8A8A;
+  --teal-light: #27B5B5;
+  --white: #F4F1EB;
+  --white-dim: rgba(244,241,235,0.6);
+  --white-faint: rgba(244,241,235,0.08);
+  --border: rgba(201,168,76,0.2);
+  --border-faint: rgba(244,241,235,0.08);
+  --dash-url: https://ca-claimssync-dashboard.whitewater-45edc27c.uaenorth.azurecontainerapps.io;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--midnight);
+  color: var(--white);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 300;
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+/* ── BACKGROUND GRID ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(201,168,76,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201,168,76,0.04) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── NAV ── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 5vw;
+  height: 72px;
+  background: rgba(8,14,26,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.nav-logo {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  text-decoration: none;
+}
+.nav-logo-cs {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--white);
+  letter-spacing: 0.02em;
+}
+.nav-logo-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  margin: 0 1px 3px;
+  display: inline-block;
+}
+.nav-logo-cloud {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--gold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  list-style: none;
+}
+.nav-links a {
+  color: var(--white-dim);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--white); }
+
+.nav-cta {
+  padding: 9px 24px;
+  background: transparent;
+  border: 1px solid var(--gold);
+  color: var(--gold) !important;
+  border-radius: 2px;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s !important;
+}
+.nav-cta:hover {
+  background: var(--gold-dim) !important;
+  color: var(--gold-light) !important;
+}
+
+/* ── HERO ── */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 120px 5vw 80px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.hero-glow {
+  position: absolute;
+  top: 20%;
+  right: -10%;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(27,138,138,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-glow-2 {
+  position: absolute;
+  bottom: 10%;
+  left: -5%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(201,168,76,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 0.2s forwards;
+}
+.hero-eyebrow-line {
+  width: 40px;
+  height: 1px;
+  background: var(--gold);
+}
+.hero-eyebrow-text {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+
+.hero-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 300;
+  font-size: clamp(56px, 8vw, 112px);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  max-width: 800px;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 0.4s forwards;
+}
+.hero-title em {
+  font-style: italic;
+  color: var(--gold);
+}
+
+.hero-sub {
+  margin-top: 32px;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--white-dim);
+  max-width: 520px;
+  line-height: 1.8;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 0.6s forwards;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 48px;
+  opacity: 0;
+  animation: fadeUp 0.8s ease 0.8s forwards;
+}
+
+.btn-primary {
+  padding: 14px 40px;
+  background: var(--gold);
+  color: var(--midnight);
+  border: none;
+  border-radius: 2px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-primary:hover {
+  background: var(--gold-light);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  padding: 14px 32px;
+  background: transparent;
+  color: var(--white-dim);
+  border: 1px solid var(--border-faint);
+  border-radius: 2px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-block;
+}
+.btn-ghost:hover {
+  border-color: var(--border);
+  color: var(--white);
+}
+
+.hero-stats {
+  display: flex;
+  gap: 48px;
+  margin-top: 80px;
+  padding-top: 40px;
+  border-top: 1px solid var(--border-faint);
+  opacity: 0;
+  animation: fadeUp 0.8s ease 1.0s forwards;
+}
+.stat-item { }
+.stat-num {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 40px;
+  font-weight: 300;
+  color: var(--gold);
+  line-height: 1;
+}
+.stat-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--white-dim);
+  text-transform: uppercase;
+  margin-top: 6px;
+}
+
+/* ── MARQUEE ── */
+.marquee-strip {
+  position: relative;
+  overflow: hidden;
+  background: var(--navy);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 0;
+  z-index: 1;
+}
+.marquee-track {
+  display: flex;
+  white-space: nowrap;
+  animation: marquee 30s linear infinite;
+}
+.marquee-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 40px;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: var(--white-dim);
+  text-transform: uppercase;
+}
+.marquee-dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--gold);
+  flex-shrink: 0;
+}
+
+/* ── FEATURES ── */
+.section {
+  position: relative;
+  padding: 120px 5vw;
+  z-index: 1;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.section-label-line { width: 32px; height: 1px; background: var(--teal); }
+.section-label-text {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--teal-light);
+  text-transform: uppercase;
+}
+
+.section-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 300;
+  font-size: clamp(36px, 5vw, 64px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  max-width: 600px;
+  margin-bottom: 64px;
+}
+.section-title em { font-style: italic; color: var(--gold); }
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border-faint);
+  border: 1px solid var(--border-faint);
+}
+
+.feature-card {
+  background: var(--navy);
+  padding: 40px 36px;
+  transition: background 0.3s;
+}
+.feature-card:hover { background: var(--navy-mid); }
+
+.feature-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--gold);
+  letter-spacing: 0.1em;
+  margin-bottom: 20px;
+}
+.feature-icon {
+  width: 40px; height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  font-size: 18px;
+}
+.feature-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  color: var(--white);
+}
+.feature-desc {
+  font-size: 13px;
+  color: var(--white-dim);
+  line-height: 1.8;
+}
+
+/* ── FLOW SECTION ── */
+.flow-section {
+  background: var(--navy);
+  padding: 120px 5vw;
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid var(--border-faint);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+  margin-top: 64px;
+}
+
+.flow-steps { }
+.flow-step {
+  display: flex;
+  gap: 24px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border-faint);
+  opacity: 0.5;
+  transition: opacity 0.3s;
+  cursor: default;
+}
+.flow-step:hover { opacity: 1; }
+.flow-step:last-child { border-bottom: none; }
+
+.flow-step-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--gold);
+  letter-spacing: 0.1em;
+  padding-top: 4px;
+  min-width: 32px;
+}
+.flow-step-content { }
+.flow-step-time {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--teal-light);
+  letter-spacing: 0.15em;
+  margin-bottom: 4px;
+}
+.flow-step-title {
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.flow-step-desc {
+  font-size: 12px;
+  color: var(--white-dim);
+}
+
+.flow-visual {
+  position: relative;
+}
+.flow-terminal {
+  background: var(--midnight);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 24px;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+}
+.terminal-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.terminal-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+.td-red { background: #FF5F57; }
+.td-yellow { background: #FEBC2E; }
+.td-green { background: #28C840; }
+
+.terminal-line { margin: 3px 0; }
+.tc-dim { color: rgba(244,241,235,0.3); }
+.tc-gold { color: var(--gold); }
+.tc-teal { color: var(--teal-light); }
+.tc-green { color: #4CAF82; }
+.tc-white { color: var(--white); }
+.cursor {
+  display: inline-block;
+  width: 8px; height: 14px;
+  background: var(--gold);
+  animation: blink 1s infinite;
+  vertical-align: middle;
+}
+
+/* ── PORTAL SECTION ── */
+.portal-section {
+  padding: 120px 5vw;
+  position: relative;
+  z-index: 1;
+}
+
+.portal-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 64px;
+}
+
+.portal-card {
+  position: relative;
+  padding: 40px 32px 36px;
+  border: 1px solid var(--border-faint);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.3s;
+  overflow: hidden;
+  text-align: left;
+}
+.portal-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  transition: opacity 0.3s;
+  opacity: 0;
+}
+.portal-card.admin::before { background: linear-gradient(90deg, var(--gold), transparent); }
+.portal-card.reseller::before { background: linear-gradient(90deg, var(--teal), transparent); }
+.portal-card.facility::before { background: linear-gradient(90deg, #7B68B5, transparent); }
+
+.portal-card:hover {
+  border-color: var(--border);
+  background: var(--white-faint);
+  transform: translateY(-2px);
+}
+.portal-card:hover::before { opacity: 1; }
+
+.portal-card-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  border-radius: 1px;
+  margin-bottom: 20px;
+}
+.admin .portal-card-badge { background: var(--gold-dim); color: var(--gold); }
+.reseller .portal-card-badge { background: rgba(27,138,138,0.15); color: var(--teal-light); }
+.facility .portal-card-badge { background: rgba(123,104,181,0.15); color: #A99ECC; }
+
+.portal-card-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 28px;
+  font-weight: 300;
+  margin-bottom: 12px;
+}
+.portal-card-desc {
+  font-size: 13px;
+  color: var(--white-dim);
+  line-height: 1.8;
+  margin-bottom: 28px;
+}
+.portal-card-features {
+  list-style: none;
+  margin-bottom: 32px;
+}
+.portal-card-features li {
+  font-size: 12px;
+  color: var(--white-dim);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.portal-card-features li:last-child { border-bottom: none; }
+.portal-card-features li::before {
+  content: '';
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.admin .portal-card-features li::before { background: var(--gold); }
+.reseller .portal-card-features li::before { background: var(--teal-light); }
+.facility .portal-card-features li::before { background: #A99ECC; }
+
+.portal-card-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: gap 0.2s;
+}
+.admin .portal-card-action { color: var(--gold); }
+.reseller .portal-card-action { color: var(--teal-light); }
+.facility .portal-card-action { color: #A99ECC; }
+.portal-card:hover .portal-card-action { gap: 14px; }
+.portal-card-action::after { content: '→'; font-size: 14px; }
+
+/* ── MODAL ── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(8,14,26,0.92);
+  backdrop-filter: blur(16px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+
+.modal {
+  background: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 48px;
+  width: 100%;
+  max-width: 480px;
+  position: relative;
+  animation: modalIn 0.3s ease;
+}
+
+.modal-close {
+  position: absolute;
+  top: 20px; right: 20px;
+  background: none;
+  border: none;
+  color: var(--white-dim);
+  font-size: 20px;
+  cursor: pointer;
+  width: 32px; height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+.modal-close:hover { color: var(--white); }
+
+.modal-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 32px;
+  font-weight: 300;
+  margin-bottom: 8px;
+}
+.modal-sub {
+  font-size: 13px;
+  color: var(--white-dim);
+  margin-bottom: 36px;
+}
+
+.role-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.role-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  background: transparent;
+  border: 1px solid var(--border-faint);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  width: 100%;
+}
+.role-btn:hover { border-color: var(--border); background: var(--white-faint); }
+
+.role-btn-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.role-btn-icon {
+  width: 36px; height: 36px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+.role-btn.admin .role-btn-icon { background: var(--gold-dim); }
+.role-btn.reseller .role-btn-icon { background: rgba(27,138,138,0.15); }
+.role-btn.facility .role-btn-icon { background: rgba(123,104,181,0.15); }
+
+.role-btn-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--white);
+}
+.role-btn-sublabel {
+  font-size: 11px;
+  color: var(--white-dim);
+  margin-top: 1px;
+}
+.role-btn-arrow {
+  color: var(--white-dim);
+  font-size: 16px;
+  transition: transform 0.2s;
+}
+.role-btn:hover .role-btn-arrow { transform: translateX(4px); color: var(--white); }
+
+.modal-footer {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-faint);
+  font-size: 11px;
+  color: var(--white-dim);
+  text-align: center;
+}
+.modal-footer a { color: var(--gold); text-decoration: none; }
+
+/* ── FOOTER ── */
+footer {
+  position: relative;
+  z-index: 1;
+  padding: 60px 5vw 40px;
+  border-top: 1px solid var(--border-faint);
+}
+.footer-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 40px;
+}
+.footer-brand-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 28px;
+  font-weight: 300;
+  margin-bottom: 8px;
+}
+.footer-brand-sub {
+  font-size: 12px;
+  color: var(--white-dim);
+  max-width: 280px;
+  line-height: 1.7;
+}
+.footer-links {
+  display: flex;
+  gap: 60px;
+}
+.footer-link-group h4 {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.footer-link-group a {
+  display: block;
+  font-size: 13px;
+  color: var(--white-dim);
+  text-decoration: none;
+  margin-bottom: 8px;
+  transition: color 0.2s;
+  cursor: pointer;
+}
+.footer-link-group a:hover { color: var(--white); }
+
+.footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-faint);
+  font-size: 11px;
+  color: var(--white-dim);
+}
+.footer-bottom a { color: var(--white-dim); text-decoration: none; }
+
+/* ── STATUS BAR ── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(76,175,130,0.1);
+  border: 1px solid rgba(76,175,130,0.2);
+  border-radius: 2px;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #4CAF82;
+  display: inline-flex;
+}
+.status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #4CAF82;
+  animation: pulse 2s infinite;
+}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.96) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .features-grid, .portal-cards { grid-template-columns: 1fr; }
+  .flow-grid { grid-template-columns: 1fr; }
+  .flow-visual { display: none; }
+  .footer-top { flex-direction: column; gap: 40px; }
+  .footer-links { gap: 40px; }
+  .hero-stats { gap: 32px; }
+  .nav-links li:not(:last-child) { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="#">
+    <span class="nav-logo-cs">ClaimSync</span>
+    <span class="nav-logo-dot"></span>
+    <span class="nav-logo-cloud">Cloud</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#features">Platform</a></li>
+    <li><a href="#flow">How it works</a></li>
+    <li><a href="#portals">Portals</a></li>
+    <li><a href="#" class="nav-cta" onclick="openModal()">Sign in</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-glow-2"></div>
+  <div class="hero-eyebrow">
+    <div class="hero-eyebrow-line"></div>
+    <div class="hero-eyebrow-text">Shafafiya Claims Automation · Abu Dhabi · UAE</div>
+  </div>
+  <h1 class="hero-title">
+    Automate your<br><em>claims</em> pipeline.<br>Daily. Reliably.
+  </h1>
+  <p class="hero-sub">
+    ClaimSync connects Abu Dhabi healthcare facilities to the Shafafiya API — automatically downloading, classifying, and routing claims, remittance, and resubmission files every morning before your team arrives.
+  </p>
+  <div class="hero-actions">
+    <button class="btn-primary" onclick="openModal()">Access Portal</button>
+    <a href="#flow" class="btn-ghost">How it works</a>
+  </div>
+  <div class="hero-stats">
+    <div class="stat-item">
+      <div class="stat-num">06:00</div>
+      <div class="stat-label">Daily sync time (UAE)</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">0</div>
+      <div class="stat-label">Manual steps required</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">100%</div>
+      <div class="stat-label">Shafafiya API coverage</div>
+    </div>
+    <div class="stat-item">
+      <div class="status-bar">
+        <div class="status-dot"></div>
+        All systems operational
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE -->
+<div class="marquee-strip">
+  <div class="marquee-track" id="marqueeTrack">
+    <span class="marquee-item"><span class="marquee-dot"></span>Claims Automation</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Shafafiya API</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Remittance Processing</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Resubmission Tracking</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Azure UAE North</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>DOH Compliant</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Multi-Facility</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Kaaryaa Intelligence LLP</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Claims Automation</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Shafafiya API</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Remittance Processing</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Resubmission Tracking</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Azure UAE North</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>DOH Compliant</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Multi-Facility</span>
+    <span class="marquee-item"><span class="marquee-dot"></span>Kaaryaa Intelligence LLP</span>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="section-label">
+    <div class="section-label-line"></div>
+    <div class="section-label-text">Platform capabilities</div>
+  </div>
+  <h2 class="section-title">Built for <em>Abu Dhabi</em><br>healthcare operations</h2>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-num">01</div>
+      <div class="feature-icon">⬇</div>
+      <div class="feature-title">Automated daily sync</div>
+      <div class="feature-desc">Engine fires at 06:00 UAE every morning. Claims, remittance, and resubmission files downloaded, classified, and stored — before your team starts.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-num">02</div>
+      <div class="feature-icon">🔒</div>
+      <div class="feature-title">Zero-credential client</div>
+      <div class="feature-desc">No API keys stored on client machines. JWT-secured access with credentials fetched from Azure Key Vault at runtime and discarded immediately after use.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-num">03</div>
+      <div class="feature-icon">🏥</div>
+      <div class="feature-title">Multi-facility ready</div>
+      <div class="feature-desc">One platform, multiple facilities. Each with independent Shafafiya credentials, dedicated blob containers, and full audit trails per run.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-num">04</div>
+      <div class="feature-icon">📊</div>
+      <div class="feature-title">Full audit visibility</div>
+      <div class="feature-desc">Every SOAP request and response archived. Interval-level drill-down, file manifests, and run history accessible from the web dashboard.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-num">05</div>
+      <div class="feature-icon">🔄</div>
+      <div class="feature-title">Resubmission tracking</div>
+      <div class="feature-desc">Automatic detection and routing of resubmission files. Attachment stripping, correct blob prefix routing, and run-level reconciliation built in.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-num">06</div>
+      <div class="feature-icon">🤝</div>
+      <div class="feature-title">Reseller portal</div>
+      <div class="feature-desc">Channel partners onboard facilities, monitor sync runs, view file manifests, trigger adhoc runs, and manage clients — all self-serve.</div>
+    </div>
+  </div>
+</section>
+
+<!-- FLOW SECTION -->
+<section class="flow-section" id="flow">
+  <div class="section-label">
+    <div class="section-label-line"></div>
+    <div class="section-label-text">Daily cycle</div>
+  </div>
+  <h2 class="section-title">What happens<br><em>every morning</em></h2>
+  <div class="flow-grid">
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="flow-step-num">01</div>
+        <div class="flow-step-content">
+          <div class="flow-step-time">06:00 UAE</div>
+          <div class="flow-step-title">Azure cron fires</div>
+          <div class="flow-step-desc">Container App Job starts. Active facilities fetched from PostgreSQL.</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">02</div>
+        <div class="flow-step-content">
+          <div class="flow-step-time">06:00 – 06:08</div>
+          <div class="flow-step-title">Shafafiya sync per facility</div>
+          <div class="flow-step-desc">Day split into 12 × 2-hour intervals. SearchTransactions → DownloadTransactionFile for each.</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">03</div>
+        <div class="flow-step-content">
+          <div class="flow-step-time">06:08</div>
+          <div class="flow-step-title">Classify & store</div>
+          <div class="flow-step-desc">Files routed to claims/, remittance/, resubmission/, logs/. Full audit trail in PostgreSQL.</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">04</div>
+        <div class="flow-step-content">
+          <div class="flow-step-time">07:00 UAE</div>
+          <div class="flow-step-title">Client pull via secure exe</div>
+          <div class="flow-step-desc">ClaimSyncPull.exe fetches files to local Reggr\ folder. JWT auth only — no API keys on client machine.</div>
+        </div>
+      </div>
+    </div>
+    <div class="flow-visual">
+      <div class="flow-terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dot td-red"></div>
+          <div class="terminal-dot td-yellow"></div>
+          <div class="terminal-dot td-green"></div>
+        </div>
+        <div class="terminal-line tc-dim"># ClaimSync Engine v3.9 — 28 Mar 2026</div>
+        <div class="terminal-line">&nbsp;</div>
+        <div class="terminal-line tc-teal">[06:00:01] Engine started — KAARYAA-T1</div>
+        <div class="terminal-line tc-white">[06:00:02] Facilities: MF2618, MF5360</div>
+        <div class="terminal-line">&nbsp;</div>
+        <div class="terminal-line tc-teal">[06:00:03] Processing MF2618...</div>
+        <div class="terminal-line tc-dim">[06:00:04]   Interval 1/12: 00:00–02:00</div>
+        <div class="terminal-line tc-dim">[06:00:07]   Interval 2/12: 02:00–04:00</div>
+        <div class="terminal-line tc-dim">[06:00:12]   ...</div>
+        <div class="terminal-line tc-gold">[06:03:44]   517 files → blob ✓</div>
+        <div class="terminal-line">&nbsp;</div>
+        <div class="terminal-line tc-teal">[06:03:45] Processing MF5360...</div>
+        <div class="terminal-line tc-gold">[06:07:22]   142 files → blob ✓</div>
+        <div class="terminal-line">&nbsp;</div>
+        <div class="terminal-line tc-green">[06:07:23] Run complete — 659 files total</div>
+        <div class="terminal-line tc-green">[06:07:23] DB log written — trigger: scheduled</div>
+        <div class="terminal-line">&nbsp;</div>
+        <div class="terminal-line tc-teal">[07:00:00] Pull.exe: JWT auth → KV key fetch</div>
+        <div class="terminal-line tc-white">[07:00:04] MF2618: 2 new, 515 skipped</div>
+        <div class="terminal-line tc-white">[07:00:07] MF5360: 20 new, 122 skipped</div>
+        <div class="terminal-line tc-green">[07:00:07] SUMMARY: 22 new files → Reggr\</div>
+        <div class="terminal-line">&nbsp;</div>
+        <div class="terminal-line tc-dim">$<span class="cursor"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PORTALS -->
+<section class="portal-section" id="portals">
+  <div class="section-label">
+    <div class="section-label-line"></div>
+    <div class="section-label-text">Access portals</div>
+  </div>
+  <h2 class="section-title">One platform,<br><em>three portals</em></h2>
+  <div class="portal-cards">
+    <div class="portal-card admin" onclick="navigate('admin')">
+      <div class="portal-card-badge">Admin</div>
+      <div class="portal-card-title">Operations Hub</div>
+      <div class="portal-card-desc">Full platform visibility. Manage all facilities, clients, resellers, and run configurations from a single control centre.</div>
+      <ul class="portal-card-features">
+        <li>All facilities across all resellers</li>
+        <li>Adhoc run trigger + run history</li>
+        <li>Interval SOAP XML viewer</li>
+        <li>Revenue + onboarding management</li>
+        <li>Super-admin tenant controls</li>
+      </ul>
+      <div class="portal-card-action">Admin sign in</div>
+    </div>
+    <div class="portal-card reseller" onclick="navigate('reseller')">
+      <div class="portal-card-badge">Reseller</div>
+      <div class="portal-card-title">Partner Portal</div>
+      <div class="portal-card-desc">Full self-serve for channel partners. Onboard facilities, monitor syncs, manage clients, and trigger adhoc runs independently.</div>
+      <ul class="portal-card-features">
+        <li>Own facilities + client hierarchy</li>
+        <li>Sync run history per facility</li>
+        <li>Self-serve adhoc run trigger</li>
+        <li>Client onboarding wizard</li>
+        <li>File + interval drill-down</li>
+      </ul>
+      <div class="portal-card-action">Reseller sign in</div>
+    </div>
+    <div class="portal-card facility" onclick="navigate('facility')">
+      <div class="portal-card-badge">Facility</div>
+      <div class="portal-card-title">Facility Access</div>
+      <div class="portal-card-desc">For healthcare facility staff. Access your claims data, download files, and submit credentials during onboarding.</div>
+      <ul class="portal-card-features">
+        <li>Claims file access</li>
+        <li>Remittance + resubmission view</li>
+        <li>Credential setup via secure link</li>
+        <li>Coming: self-service portal</li>
+      </ul>
+      <div class="portal-card-action">Facility sign in</div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-top">
+    <div>
+      <div class="footer-brand-name">ClaimSync<span style="color:var(--gold)">.</span>Cloud</div>
+      <div class="footer-brand-sub">Shafafiya claims automation for Abu Dhabi healthcare facilities.</div>
+      <div style="margin-top:12px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.12em;color:var(--gold);opacity:0.8">Powered by &middot; Kaaryaa Intelligence LLP &middot; Knowledge Engineered.&trade;</div>
+    </div>
+    <div class="footer-links">
+      <div class="footer-link-group">
+        <h4>Portals</h4>
+        <a onclick="navigate('admin')">Admin login</a>
+        <a onclick="navigate('reseller')">Reseller login</a>
+        <a onclick="navigate('facility')">Facility access</a>
+      </div>
+      <div class="footer-link-group">
+        <h4>Company</h4>
+        <a href="https://kaaryaa.ai" target="_blank">Kaaryaa Intelligence LLP</a>
+        <a onclick="openModal()">Get access</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <div>© 2026 Kaaryaa Intelligence LLP. ClaimSync is a registered product.</div>
+    <div>
+      <span style="color:var(--gold);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.1em">UAE North · Azure · DOH Shafafiya</span>
+    </div>
+  </div>
+</footer>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title">Sign in to<br>ClaimSync</div>
+    <div class="modal-sub">Select your access level to continue to the correct portal</div>
+    <div class="role-options">
+      <button class="role-btn admin" onclick="navigate('admin')">
+        <div class="role-btn-left">
+          <div class="role-btn-icon">⚙</div>
+          <div>
+            <div class="role-btn-label">Admin</div>
+            <div class="role-btn-sublabel">Kaaryaa operations team</div>
+          </div>
+        </div>
+        <div class="role-btn-arrow">→</div>
+      </button>
+      <button class="role-btn reseller" onclick="navigate('reseller')">
+        <div class="role-btn-left">
+          <div class="role-btn-icon">🤝</div>
+          <div>
+            <div class="role-btn-label">Reseller / Partner</div>
+            <div class="role-btn-sublabel">Channel partners & distributors</div>
+          </div>
+        </div>
+        <div class="role-btn-arrow">→</div>
+      </button>
+      <button class="role-btn facility" onclick="navigate('facility')">
+        <div class="role-btn-left">
+          <div class="role-btn-icon">🏥</div>
+          <div>
+            <div class="role-btn-label">Facility</div>
+            <div class="role-btn-sublabel">Healthcare facility staff</div>
+          </div>
+        </div>
+        <div class="role-btn-arrow">→</div>
+      </button>
+    </div>
+    <div class="modal-footer">
+      Need access? Contact your reseller or <a href="mailto:support@kaaryaa.ai">Kaaryaa Intelligence LLP</a>
+    </div>
+  </div>
+</div>
+
+<script>
+const DASH = "https://ca-claimssync-dashboard.whitewater-45edc27c.uaenorth.azurecontainerapps.io";
+
+const ROUTES = {
+  admin:    DASH + "/admin/login",
+  reseller: DASH + "/reseller/login",
+  facility: DASH + "/reseller/login", // placeholder until /facility/* built in Phase 5
+};
+
+function navigate(role) {
+  window.location.href = ROUTES[role];
+}
+
+function openModal() {
+  document.getElementById('modal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('modal')) closeModal();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// Duplicate marquee for seamless loop
+const track = document.getElementById('marqueeTrack');
+track.innerHTML += track.innerHTML;
+</script>
+</body>
+</html>
