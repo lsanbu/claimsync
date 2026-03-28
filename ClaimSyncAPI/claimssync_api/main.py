@@ -51,7 +51,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-API_VERSION = "2.9"
+API_VERSION = "3.5"
 BUILD_TAG   = os.getenv("IMAGE_TAG", "local")
 
 

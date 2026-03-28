@@ -1,6 +1,6 @@
 # ClaimSync — CLAUDE.md
 > **Single source of truth for Claude Code**
-> Last updated: 26 Mar 2026 (EOD) — verified by Claude Code live checks
+> Last updated: 28 Mar 2026 — verified by Claude Code live checks
 > Founder: Anbu, Kaaryaa GenAI Solutions
 > Read this file before making ANY changes to ClaimSync.
 
@@ -20,13 +20,15 @@
 
 ---
 
-## 2. Live Versions (26 Mar 2026 EOD)
+## 2. Live Versions (28 Mar 2026 — verified + GitHub synced)
 
 | Component | Image | Container App / Job | Notes |
 |---|---|---|---|
-| Engine | `claimsync-engine:3.9` | `job-claimssync-engine` | Resubmission blob upload fix |
-| API | `claimsync-api:2.9` | `ca-claimssync-api` | Intervals FROM/TO fix |
-| Dashboard | `claimsync-dashboard:2.17` | `ca-claimssync-dashboard` | Interval XML viewer |
+| Engine | `claimsync-engine:3.9` | `job-claimssync-engine` | Resubmission fix verified: 18 resub + 27 total manifest |
+| API | `claimsync-api:3.5` | `ca-claimssync-api` | Storage key endpoint + SAS endpoint + service token (365d) |
+| Dashboard | `claimsync-dashboard:2.20` | `ca-claimssync-dashboard` | Reseller portal: run history, Files/Intervals tabs, adhoc run page |
+
+All three repos synced to GitHub with detailed commit messages.
 
 ---
 
@@ -152,7 +154,7 @@ claimssync-{facility}/
 ## 11. Saleem PC — Local Folder Structure
 
 ```
-C:\Users\USER\ClaimSync\Raggr\
+C:\Users\USER\ClaimSync\Reggr\
   claimsync_pull_YYYY-MM-DD.log        ← central pull log (all facilities)
 
   mf2618\
@@ -182,7 +184,7 @@ C:\Users\USER\ClaimSync\Raggr\
       downloadlog-MF5360-*.csv
 ```
 
-**ClaimSyncPull.py v2.0** — Task Scheduler 07:00 UAE daily. Pulls all facilities. Central log at `Raggr\`.
+**ClaimSyncPull.py v3.1** — Task Scheduler 07:00 UAE daily. Pulls all facilities. Central log at `Reggr\`. Storage key fetched from API at runtime (key in memory only, never on disk).
 
 ---
 
@@ -222,7 +224,10 @@ All verified from codebase scan. Pure Next.js App Router.
 | GET | `/health` | Health + version | None |
 | GET | `/docs` | Swagger UI | None |
 | POST | `/auth/admin/login` | Admin JWT | None |
-| POST | `/auth/reseller/login` | Reseller JWT | None |
+| POST | `/auth/reseller/login` | Reseller JWT (8h) | None |
+| POST | `/auth/reseller/service-token` | Long-lived JWT (365d) for ClaimSyncPull.py | None |
+| GET | `/reseller/storage/sas-token` | Read-only 24h SAS URLs for reseller's blob containers | JWT Reseller |
+| GET | `/reseller/storage/key` | Storage account key for direct blob access (ClaimSyncPull.py) | JWT Reseller |
 | GET | `/admin/dashboard` | Platform stats | JWT Admin |
 | GET | `/admin/facilities` | All facilities | JWT Admin |
 | PUT | `/admin/facilities/{code}/reassign-tenant` | Reassign tenant | JWT SuperAdmin |
@@ -293,6 +298,11 @@ Schema: `claimssync_schema_v2.sql` + `migration_v3.sql` + auto-migration for fil
 - Intervals endpoint — per-interval from/to + blob refs (FROM/TO fix :2.9)
 - Search-history XML viewer endpoint
 - Reassign-tenant endpoint (super-admin)
+- **SAS token endpoint** (:3.2) — `GET /reseller/storage/sas-token`, account-key SAS, read+list, 24h
+- **Service token endpoint** (:3.3) — `POST /auth/reseller/service-token`, 365-day JWT for scripts
+- **Storage key endpoint** (:3.5) — `GET /reseller/storage/key`, direct key from KV for ClaimSyncPull.py
+- Storage Blob Delegator RBAC role added to MI
+- Storage account network rules: Allow all (Phase 4 = Private Endpoints)
 
 ### Phase 3 — Dashboard + Onboarding ✅ (:2.17)
 - Next.js 14 App Router — 18+ live routes
@@ -310,13 +320,17 @@ Schema: `claimssync_schema_v2.sql` + `migration_v3.sql` + auto-migration for fil
 - ResendCredentialToken.tsx — 4-state token UI
 - DB schema v2 + migration_v3 (7-day token expiry)
 
-### ClaimSyncPull.py v2.0 ✅ (local — Saleem PC)
+### ClaimSyncPull.py v3.1 ✅ (local — Saleem PC)
 - Multi-facility: MF2618 + MF5360
 - Blob prefix routing: claims/ → claims\, search_history/ → root, logs/ → logs\
-- Central log: `Raggr\claimsync_pull_YYYY-MM-DD.log`
+- Central log: `Reggr\claimsync_pull_YYYY-MM-DD.log`
 - Skip-if-exists logic
 - archive\ subfolders auto-created
 - Task Scheduler 07:00 UAE daily
+- **v3.1 security** — No storage account key on Saleem's PC
+  - `CLAIMSSYNC_API_URL` + `CLAIMSSYNC_API_TOKEN` (365-day service JWT)
+  - Fetches storage key from API at startup — key lives only in memory
+  - Clear error + exit on 401 (expired token)
 
 ---
 
@@ -359,9 +373,10 @@ Schema: `claimssync_schema_v2.sql` + `migration_v3.sql` + auto-migration for fil
 ## 18. Roadmap
 
 ### Immediate — 27 Mar 2026
-- [ ] Verify 06:00 UAE cron resumes for both MF2618 + MF5360 (tenant fix)
-- [ ] Verify resubmission files appear in blob for MF5360 16 Mar adhoc run
-- [ ] Investigate Azure cost — PostgreSQL ₹3,578 — check DB SKU
+- [ ] Verify 06:00 UAE cron resumes for both MF2618 + MF5360 (post tenant fix)
+- ✅ Resubmission fix verified — 18 resub files + 27 total manifest for MF5360 16 Mar
+- ✅ PostgreSQL cost investigated — already at floor (Standard_B1ms, 32GB, 7-day backup, geo-redundant disabled). ₹3,578/mo is minimum for Azure Managed PostgreSQL UAE North. No further reduction possible without moving off managed service.
+- ✅ All three repos synced to GitHub with detailed commit messages
 
 ### Next Sprint
 - [ ] Reporting module — per-facility, date range, CSV export

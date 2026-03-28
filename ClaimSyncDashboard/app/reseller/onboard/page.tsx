@@ -1,12 +1,19 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, ArrowRight, CheckCircle2,
   Plus, Trash2, Loader2, Building2, User, FileText
 } from 'lucide-react'
 
-const STEPS = ['Client Details', 'Facilities', 'Review & Submit']
+interface ClientOption {
+  client_id: string
+  client_code: string
+  client_name: string
+  facility_count: number
+}
+
+const STEPS = ['Client', 'Facilities', 'Review & Submit']
 const PLANS = [
   { code: 'STARTER',    label: 'Starter',    price: 'AED 499/mo', features: 'Up to 3 facilities' },
   { code: 'PRO',        label: 'Pro',         price: 'AED 999/mo', features: 'Up to 10 facilities' },
@@ -44,6 +51,30 @@ export default function ResellerOnboardPage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [error,   setError]   = useState('')
 
+  // Client selection
+  const [clientMode, setClientMode] = useState<'new' | 'existing'>('new')
+  const [clients, setClients] = useState<ClientOption[]>([])
+  const [selectedClientId, setSelectedClientId] = useState<string>('')
+  const [clientsLoading, setClientsLoading] = useState(false)
+
+  const loadClients = useCallback(async () => {
+    const token = sessionStorage.getItem('cs_token')
+    if (!token) return
+    setClientsLoading(true)
+    try {
+      const res = await fetch('/api/claimssync/reseller/clients', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setClients(Array.isArray(data) ? data : [])
+      }
+    } catch { /* ignore */ }
+    finally { setClientsLoading(false) }
+  }, [])
+
+  useEffect(() => { loadClients() }, [loadClients])
+
   // Step 1 data
   const [tenantName,    setTenantName]    = useState('')
   const [contactName,   setContactName]   = useState('')
@@ -72,9 +103,13 @@ export default function ResellerOnboardPage() {
 
   const validate = () => {
     if (step === 0) {
-      if (!tenantName) return 'Client / Clinic name is required'
-      if (!contactName) return 'Contact name is required'
-      if (!contactEmail || !contactEmail.includes('@')) return 'Valid email required'
+      if (clientMode === 'existing') {
+        if (!selectedClientId) return 'Please select an existing client'
+      } else {
+        if (!tenantName) return 'Client / Clinic name is required'
+        if (!contactName) return 'Contact name is required'
+        if (!contactEmail || !contactEmail.includes('@')) return 'Valid email required'
+      }
     }
     if (step === 1) {
       for (const f of facilities) {
@@ -114,6 +149,7 @@ export default function ResellerOnboardPage() {
           proposed_facilities:  facilities,
           requested_plan_code:  facilities[0]?.plan_code || 'STARTER',
           reseller_notes:       notes || undefined,
+          client_id:            clientMode === 'existing' ? selectedClientId : undefined,
         })
       })
       const data = await res.json()
@@ -179,14 +215,74 @@ export default function ResellerOnboardPage() {
           </div>
         )}
 
-        {/* Step 0: Client Details */}
+        {/* Step 0: Client Selection + Details */}
         {step === 0 && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <User className="w-4 h-4 text-blue-500" />
-              <h2 className="font-semibold text-gray-800">Client Details</h2>
+              <h2 className="font-semibold text-gray-800">Client</h2>
             </div>
 
+            {/* Client mode selector */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setClientMode('new'); setSelectedClientId('') }}
+                className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
+                  clientMode === 'new'
+                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                    : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                + New Client
+              </button>
+              <button
+                onClick={() => setClientMode('existing')}
+                className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
+                  clientMode === 'existing'
+                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                    : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                Existing Client
+              </button>
+            </div>
+
+            {clientMode === 'existing' && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Select Client</label>
+                {clientsLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading clients...
+                  </div>
+                ) : clients.length === 0 ? (
+                  <div className="text-xs text-gray-400 py-2">No existing clients. Create a new one above.</div>
+                ) : (
+                  <select
+                    value={selectedClientId}
+                    onChange={e => {
+                      setSelectedClientId(e.target.value)
+                      const c = clients.find(cl => cl.client_id === e.target.value)
+                      if (c) {
+                        setTenantName(c.client_name)
+                      }
+                    }}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                  >
+                    <option value="">-- Select a client --</option>
+                    {clients.map(c => (
+                      <option key={c.client_id} value={c.client_id}>
+                        {c.client_name} ({c.client_code}) - {c.facility_count} facilities
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedClientId && (
+                  <p className="text-xs text-emerald-600 mt-1">New facility will be added under this client.</p>
+                )}
+              </div>
+            )}
+
+            {clientMode === 'new' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -234,6 +330,7 @@ export default function ResellerOnboardPage() {
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300 resize-none" />
               </div>
             </div>
+            )}
           </div>
         )}
 

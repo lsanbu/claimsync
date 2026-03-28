@@ -7,8 +7,11 @@ import {
   AlertTriangle, RefreshCw, Clock, Download, FileText,
   Activity, ChevronDown, ChevronUp, X, Search
 } from 'lucide-react'
+import RunFilesTab from '@/components/runs/RunFilesTab'
+import RunIntervalsTab from '@/components/runs/RunIntervalsTab'
+import { FileRecord, IntervalRecord } from '@/components/runs/types'
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// -- Types --
 interface RunRecord {
   run_id:              string
   started_at:          string
@@ -23,29 +26,7 @@ interface RunRecord {
   trigger_type:        string
 }
 
-interface FileRecord {
-  file_id:         string
-  file_name:       string
-  file_type:       string | null
-  file_size_bytes: number | null
-  blob_path:       string | null
-  uploaded_at:     string | null
-  created_at:      string
-}
-
-interface IntervalRecord {
-  interval_index:   number
-  type:             string
-  from_time:        string | null
-  to_time:          string | null
-  files_found:      number | null
-  request_blob:     string | null
-  response_blob:    string | null
-  request_exists:   boolean
-  response_exists:  boolean
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// -- Helpers --
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     success: 'bg-emerald-100 text-emerald-700',
@@ -61,7 +42,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function fmtDt(dt: string | null) {
-  if (!dt) return '—'
+  if (!dt) return '\u2014'
   return new Date(dt).toLocaleString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
@@ -69,22 +50,8 @@ function fmtDt(dt: string | null) {
 }
 
 function fmtDate(dt: string | null) {
-  if (!dt) return '—'
+  if (!dt) return '\u2014'
   return new Date(dt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function fmtSize(bytes: number | null) {
-  if (bytes == null) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1048576).toFixed(1)} MB`
-}
-
-function detectFileType(name: string): string {
-  if (/^H/i.test(name)) return 'Claims'
-  if (/^351/i.test(name)) return 'Remittance'
-  if (/^RSB/i.test(name)) return 'Resubmission'
-  return 'Other'
 }
 
 function defaultFrom(): string {
@@ -97,7 +64,7 @@ function defaultTo(): string {
   return new Date().toISOString().slice(0, 10) + ' 23:59'
 }
 
-// ── Main Page ──────────────────────────────────────────────────────────────────
+// -- Main Page --
 export default function AdhocRunPage() {
   const router = useRouter()
   const params = useParams()
@@ -115,15 +82,12 @@ export default function AdhocRunPage() {
   const [activeTab, setActiveTab]     = useState<Record<string, 'files' | 'intervals'>>({})
   const [files, setFiles]             = useState<Record<string, FileRecord[]>>({})
   const [filesLoading, setFilesLoading] = useState<string | null>(null)
-  const [fileFilter, setFileFilter]   = useState('')
   const [intervals, setIntervals]     = useState<Record<string, IntervalRecord[]>>({})
   const [intervalsLoading, setIntervalsLoading] = useState<string | null>(null)
-  const [xmlViewer, setXmlViewer]     = useState<{ req: string; resp: string; idx: number; type: string } | null>(null)
-  const [xmlLoading, setXmlLoading]   = useState(false)
 
   const getToken = () => typeof window !== 'undefined' ? sessionStorage.getItem('cs_admin_token') : null
 
-  // ── Load runs ──────────────────────────────────────────────────────────
+  // -- Load runs --
   const loadRuns = useCallback(async () => {
     const token = getToken()
     if (!token) { router.push('/admin/login'); return }
@@ -147,7 +111,7 @@ export default function AdhocRunPage() {
     return () => clearInterval(id)
   }, [loadRuns])
 
-  // ── Trigger adhoc run ──────────────────────────────────────────────────
+  // -- Trigger adhoc run --
   const handleTrigger = async () => {
     const token = getToken()
     if (!token) { router.push('/admin/login'); return }
@@ -161,7 +125,7 @@ export default function AdhocRunPage() {
       const data = await res.json()
       if (res.ok) {
         setTriggerMsg({ ok: true, text: data.message || 'Adhoc run triggered successfully' })
-        setTimeout(loadRuns, 3000) // refresh runs after a short delay
+        setTimeout(loadRuns, 3000)
       } else {
         setTriggerMsg({ ok: false, text: data.detail || `Error (${res.status})` })
       }
@@ -172,13 +136,12 @@ export default function AdhocRunPage() {
     }
   }
 
-  // ── Load files for a run ───────────────────────────────────────────────
+  // -- Load files for a run --
   const loadFiles = async (runId: string) => {
-    if (files[runId]) { setExpandedRun(expandedRun === runId ? null : runId); return }
+    if (files[runId]) return
     const token = getToken()
     if (!token) return
     setFilesLoading(runId)
-    setExpandedRun(runId)
     try {
       const res = await fetch(`/api/claimssync/admin/facilities/${code}/runs/${runId}/files`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -191,7 +154,7 @@ export default function AdhocRunPage() {
     finally { setFilesLoading(null) }
   }
 
-  // ── Load intervals for a run ──────────────────────────────────────────
+  // -- Load intervals for a run --
   const loadIntervals = async (runId: string) => {
     if (intervals[runId]) return
     const token = getToken()
@@ -209,53 +172,16 @@ export default function AdhocRunPage() {
     finally { setIntervalsLoading(null) }
   }
 
-  // ── Load raw XML for viewer ─────────────────────────────────────────
-  const loadXml = async (reqBlob: string | null, respBlob: string | null, idx: number, type: string) => {
-    const token = getToken()
-    if (!token) return
-    setXmlLoading(true)
-    let reqXml = '', respXml = ''
-    try {
-      if (reqBlob) {
-        const fname = reqBlob.replace('search_history/', '')
-        const r = await fetch(`/api/claimssync/admin/facilities/${code}/search-history/${fname}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        if (r.ok) reqXml = await r.text()
-      }
-      if (respBlob) {
-        const fname = respBlob.replace('search_history/', '')
-        const r = await fetch(`/api/claimssync/admin/facilities/${code}/search-history/${fname}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        if (r.ok) respXml = await r.text()
-      }
-    } catch { /* ignore */ }
-    setXmlViewer({ req: reqXml, resp: respXml, idx, type })
-    setXmlLoading(false)
+  const toggleRun = (runId: string) => {
+    if (expandedRun === runId) {
+      setExpandedRun(null)
+    } else {
+      setExpandedRun(runId)
+      setActiveTab(prev => ({ ...prev, [runId]: prev[runId] || 'files' }))
+      loadFiles(runId)
+      loadIntervals(runId)
+    }
   }
-
-  // ── CSV export ─────────────────────────────────────────────────────────
-  const exportCsv = (runId: string) => {
-    const f = files[runId]
-    if (!f?.length) return
-    const header = 'Filename,File Type,Size,Uploaded At,Blob Path\n'
-    const rows = f.map(r =>
-      `"${r.file_name}","${detectFileType(r.file_name)}","${fmtSize(r.file_size_bytes)}","${fmtDt(r.uploaded_at)}","${r.blob_path || ''}"`
-    ).join('\n')
-    const blob = new Blob([header + rows], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = `${code}_run_${runId.slice(0, 8)}_files.csv`
-    a.click(); URL.revokeObjectURL(url)
-  }
-
-  const isSuperAdmin = (() => {
-    try {
-      const u = typeof window !== 'undefined' ? sessionStorage.getItem('cs_admin_user') : null
-      return u ? JSON.parse(u).is_super_admin === true : false
-    } catch { return false }
-  })()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -267,7 +193,7 @@ export default function AdhocRunPage() {
           </div>
           <div>
             <span className="font-semibold">ClaimSync</span>
-            <span className="text-blue-300 text-xs ml-2">— Admin Portal</span>
+            <span className="text-blue-300 text-xs ml-2">&mdash; Admin Portal</span>
           </div>
         </div>
         <nav className="flex items-center gap-4 text-sm">
@@ -289,13 +215,13 @@ export default function AdhocRunPage() {
               <ArrowLeft className="w-3.5 h-3.5" /> Facilities
             </button>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Adhoc Run — {code}</h1>
+              <h1 className="text-lg font-bold text-gray-900">Adhoc Run &mdash; {code}</h1>
               <p className="text-xs text-gray-400">Trigger a manual sync for specific date range</p>
             </div>
           </div>
         </div>
 
-        {/* ── SECTION A: Adhoc Run Form ────────────────────────────────── */}
+        {/* SECTION A: Adhoc Run Form */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -334,7 +260,7 @@ export default function AdhocRunPage() {
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
           >
             {triggering
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Triggering…</>
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Triggering&hellip;</>
               : <><Play className="w-4 h-4" /> Run Now</>
             }
           </button>
@@ -351,13 +277,13 @@ export default function AdhocRunPage() {
           )}
         </div>
 
-        {/* ── SECTION B: Run History ───────────────────────────────────── */}
+        {/* SECTION B: Run History */}
         <div className="bg-white rounded-xl border border-gray-200">
           <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-blue-600" />
               <span className="text-sm font-semibold text-gray-700">Run History</span>
-              <span className="text-xs text-gray-400">(last 10 · auto-refreshes)</span>
+              <span className="text-xs text-gray-400">(last 10 &middot; auto-refreshes)</span>
             </div>
             <button onClick={loadRuns} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
               <RefreshCw className="w-3 h-3" /> Refresh
@@ -366,7 +292,7 @@ export default function AdhocRunPage() {
 
           {runsLoading && runs.length === 0 ? (
             <div className="py-12 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading runs…
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading runs&hellip;
             </div>
           ) : runs.length === 0 ? (
             <div className="py-12 text-center text-sm text-gray-400">No sync runs found for {code}</div>
@@ -397,16 +323,7 @@ export default function AdhocRunPage() {
                     <div className="text-right">
                       {run.status === 'success' && (
                         <button
-                          onClick={() => {
-                            if (expandedRun === run.run_id) {
-                              setExpandedRun(null)
-                            } else {
-                              setExpandedRun(run.run_id)
-                              setActiveTab(prev => ({ ...prev, [run.run_id]: prev[run.run_id] || 'files' }))
-                              loadFiles(run.run_id)
-                              loadIntervals(run.run_id)
-                            }
-                          }}
+                          onClick={() => toggleRun(run.run_id)}
                           className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 ml-auto"
                         >
                           {expandedRun === run.run_id
@@ -418,7 +335,7 @@ export default function AdhocRunPage() {
                     </div>
                   </div>
 
-                  {/* ── SECTION C+D: Expanded detail (tabs) ──────────── */}
+                  {/* Expanded detail (tabs) */}
                   {expandedRun === run.run_id && (
                     <div className="px-5 pb-4 bg-gray-50 border-t border-gray-100">
                       {/* Tab bar */}
@@ -447,119 +364,22 @@ export default function AdhocRunPage() {
 
                       {/* Files tab */}
                       {(activeTab[run.run_id] || 'files') === 'files' && (
-                        <>
-                          {filesLoading === run.run_id ? (
-                            <div className="py-6 text-center text-xs text-gray-400 flex items-center justify-center gap-2">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading files…
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex items-center justify-between py-2">
-                                <input
-                                  type="text"
-                                  placeholder="Filter files…"
-                                  value={fileFilter}
-                                  onChange={e => setFileFilter(e.target.value)}
-                                  className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-56 focus:outline-none focus:ring-1 focus:ring-blue-300"
-                                />
-                                <button
-                                  onClick={() => exportCsv(run.run_id)}
-                                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 bg-white"
-                                >
-                                  <Download className="w-3 h-3" /> Export CSV
-                                </button>
-                              </div>
-                              <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                                <div className="grid grid-cols-5 gap-3 px-4 py-2 text-xs font-medium text-gray-400 uppercase bg-gray-50 border-b border-gray-200">
-                                  <div className="col-span-2">Filename</div>
-                                  <div>Type</div>
-                                  <div>Size</div>
-                                  <div>Uploaded</div>
-                                </div>
-                                <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
-                                  {(files[run.run_id] || [])
-                                    .filter(f => !fileFilter || f.file_name.toLowerCase().includes(fileFilter.toLowerCase()))
-                                    .map(f => (
-                                      <div key={f.file_id} className="grid grid-cols-5 gap-3 px-4 py-2 items-center text-xs">
-                                        <div className="col-span-2 font-mono text-gray-700 truncate" title={f.file_name}>{f.file_name}</div>
-                                        <div><span className={`px-1.5 py-0.5 rounded text-xs ${
-                                          detectFileType(f.file_name) === 'Claims' ? 'bg-blue-50 text-blue-600' :
-                                          detectFileType(f.file_name) === 'Remittance' ? 'bg-purple-50 text-purple-600' :
-                                          detectFileType(f.file_name) === 'Resubmission' ? 'bg-amber-50 text-amber-600' :
-                                          'bg-gray-50 text-gray-500'
-                                        }`}>{detectFileType(f.file_name)}</span></div>
-                                        <div className="text-gray-500">{fmtSize(f.file_size_bytes)}</div>
-                                        <div className="text-gray-500">{fmtDt(f.uploaded_at)}</div>
-                                      </div>
-                                    ))}
-                                  {(files[run.run_id] || []).length === 0 && (
-                                    <div className="py-6 text-center text-xs text-gray-400">No files recorded</div>
-                                  )}
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </>
+                        <RunFilesTab
+                          files={files[run.run_id] || []}
+                          loading={filesLoading === run.run_id}
+                          facilityCode={code}
+                          runId={run.run_id}
+                        />
                       )}
 
                       {/* Intervals tab */}
                       {activeTab[run.run_id] === 'intervals' && (
-                        <>
-                          {intervalsLoading === run.run_id ? (
-                            <div className="py-6 text-center text-xs text-gray-400 flex items-center justify-center gap-2">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading intervals…
-                            </div>
-                          ) : (intervals[run.run_id] || []).length === 0 ? (
-                            <div className="py-8 text-center text-xs text-gray-400">
-                              Interval detail not available for runs before engine v3.8
-                            </div>
-                          ) : (
-                            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                              <div className="grid grid-cols-7 gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase bg-gray-50 border-b border-gray-200">
-                                <div>#</div>
-                                <div>Type</div>
-                                <div>From</div>
-                                <div>To</div>
-                                <div>Files</div>
-                                <div>Request</div>
-                                <div>Response</div>
-                              </div>
-                              <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
-                                {(intervals[run.run_id] || []).map((intv, i) => (
-                                  <div key={`${intv.type}_${intv.interval_index}`} className={`grid grid-cols-7 gap-2 px-4 py-2 items-center text-xs ${
-                                    intv.response_exists ? 'bg-white' : 'bg-gray-50'
-                                  }`}>
-                                    <div className="text-gray-600 font-mono">{intv.interval_index}</div>
-                                    <div><span className={`px-1.5 py-0.5 rounded text-xs ${
-                                      intv.type === 'claim' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
-                                    }`}>{intv.type}</span></div>
-                                    <div className="text-gray-500">{intv.from_time || '—'}</div>
-                                    <div className="text-gray-500">{intv.to_time || '—'}</div>
-                                    <div className="text-gray-700 font-medium">{intv.files_found ?? '—'}</div>
-                                    <div>{intv.request_exists
-                                      ? <span className="text-emerald-600 text-xs">Ready</span>
-                                      : <span className="text-gray-300 text-xs">—</span>
-                                    }</div>
-                                    <div className="flex items-center gap-2">
-                                      {intv.response_exists
-                                        ? <span className="text-emerald-600 text-xs">Ready</span>
-                                        : <span className="text-gray-300 text-xs">—</span>
-                                      }
-                                      {(intv.request_exists || intv.response_exists) && (
-                                        <button
-                                          onClick={() => loadXml(intv.request_blob, intv.response_blob, intv.interval_index, intv.type)}
-                                          className="text-xs text-blue-600 hover:text-blue-800 underline"
-                                        >
-                                          View
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </>
+                        <RunIntervalsTab
+                          intervals={intervals[run.run_id] || []}
+                          loading={intervalsLoading === run.run_id}
+                          facilityCode={code}
+                          getToken={getToken}
+                        />
                       )}
                     </div>
                   )}
@@ -569,49 +389,6 @@ export default function AdhocRunPage() {
           )}
         </div>
       </div>
-
-      {/* ── XML Viewer Modal ──────────────────────────────────────── */}
-      {xmlViewer && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700">
-                  Interval {xmlViewer.idx} — {xmlViewer.type}
-                </h3>
-                <p className="text-xs text-gray-400">Search history request/response XML</p>
-              </div>
-              <button onClick={() => setXmlViewer(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            {xmlLoading ? (
-              <div className="flex-1 flex items-center justify-center py-12">
-                <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-              </div>
-            ) : (
-              <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 gap-0 divide-x divide-gray-200">
-                <div className="flex flex-col">
-                  <div className="px-4 py-2 bg-blue-50 border-b border-gray-200 text-xs font-medium text-blue-700">
-                    Request XML (sent to Shafafiya)
-                  </div>
-                  <pre className="flex-1 p-4 text-xs text-gray-700 overflow-auto font-mono whitespace-pre-wrap break-all bg-gray-50">
-                    {xmlViewer.req || '(not available)'}
-                  </pre>
-                </div>
-                <div className="flex flex-col">
-                  <div className="px-4 py-2 bg-emerald-50 border-b border-gray-200 text-xs font-medium text-emerald-700">
-                    Response XML (from Shafafiya)
-                  </div>
-                  <pre className="flex-1 p-4 text-xs text-gray-700 overflow-auto font-mono whitespace-pre-wrap break-all bg-gray-50">
-                    {xmlViewer.resp || '(not available)'}
-                  </pre>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClaimSync — Workflow & Concerned Parties</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f8f8f6; margin: 0; padding: 24px; }
+  h2 { color: #0A6E6E; font-size: 22px; margin: 0 0 4px 0; }
+  p { color: #666; font-size: 13px; margin: 0 0 20px 0; }
+  svg { display: block; width: 100%; max-width: 900px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 20px; box-sizing: border-box; }
+  .node { cursor: pointer; }
+  .node:hover rect { opacity: 0.85; }
+</style>
+</head>
+<body>
+<h2>ClaimSync — Workflow & Concerned Parties</h2>
+<p>10-step end-to-end flow — Onboarding + Daily Operations across all four parties</p>
+
+<svg viewBox="0 0 860 780" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="ah-b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Lane backgrounds -->
+<rect x="0" y="72" width="215" height="700" fill="#1D9E75" opacity="0.07" rx="0"/>
+<rect x="215" y="72" width="215" height="700" fill="#7F77DD" opacity="0.07"/>
+<rect x="430" y="72" width="215" height="700" fill="#BA7517" opacity="0.07"/>
+<rect x="645" y="72" width="215" height="700" fill="#378ADD" opacity="0.07"/>
+
+<!-- Lane dividers -->
+<line x1="215" y1="72" x2="215" y2="772" stroke="#ccc" stroke-width="0.8" stroke-dasharray="6 4"/>
+<line x1="430" y1="72" x2="430" y2="772" stroke="#ccc" stroke-width="0.8" stroke-dasharray="6 4"/>
+<line x1="645" y1="72" x2="645" y2="772" stroke="#ccc" stroke-width="0.8" stroke-dasharray="6 4"/>
+
+<!-- Lane headers -->
+<!-- Saleem -->
+<rect x="10" y="12" width="195" height="54" rx="10" fill="#1D9E75" stroke="#0F6E56" stroke-width="0.5"/>
+<text x="107" y="33" text-anchor="middle" fill="white" font-size="15" font-weight="600" font-family="Arial">Saleem</text>
+<text x="107" y="52" text-anchor="middle" fill="#9FE1CB" font-size="12" font-family="Arial">Reseller partner</text>
+
+<!-- Kaaryaa Admin -->
+<rect x="225" y="12" width="195" height="54" rx="10" fill="#534AB7" stroke="#3C3489" stroke-width="0.5"/>
+<text x="322" y="33" text-anchor="middle" fill="white" font-size="15" font-weight="600" font-family="Arial">Kaaryaa admin</text>
+<text x="322" y="52" text-anchor="middle" fill="#CECBF6" font-size="12" font-family="Arial">Anbu</text>
+
+<!-- Facility -->
+<rect x="440" y="12" width="195" height="54" rx="10" fill="#BA7517" stroke="#854F0B" stroke-width="0.5"/>
+<text x="537" y="33" text-anchor="middle" fill="white" font-size="15" font-weight="600" font-family="Arial">Facility</text>
+<text x="537" y="52" text-anchor="middle" fill="#FAC775" font-size="12" font-family="Arial">Healthcare client</text>
+
+<!-- Azure Cloud -->
+<rect x="655" y="12" width="195" height="54" rx="10" fill="#185FA5" stroke="#0C447C" stroke-width="0.5"/>
+<text x="752" y="33" text-anchor="middle" fill="white" font-size="15" font-weight="600" font-family="Arial">Azure cloud</text>
+<text x="752" y="52" text-anchor="middle" fill="#B5D4F4" font-size="12" font-family="Arial">UAE North</text>
+
+<!-- Phase 1 bar -->
+<rect x="0" y="74" width="860" height="20" fill="#888" opacity="0.12"/>
+<text x="430" y="84" text-anchor="middle" fill="#555" font-size="12" font-family="Arial" font-style="italic">— Onboarding workflow —</text>
+
+<!-- STEP 1: Submit request (Saleem) -->
+<g class="node">
+  <rect x="18" y="102" width="180" height="56" rx="10" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.2"/>
+  <text x="108" y="123" text-anchor="middle" fill="#085041" font-size="13" font-weight="600" font-family="Arial">1. Submit request</text>
+  <text x="108" y="143" text-anchor="middle" fill="#0F6E56" font-size="11" font-family="Arial">New / existing client</text>
+</g>
+
+<!-- Arrow 1→2 -->
+<path d="M 198,130 L 215,130 L 215,196 L 225,196" fill="none" stroke="#888" stroke-width="1.3" marker-end="url(#ah)"/>
+
+<!-- STEP 2: Review & approve (Kaaryaa) -->
+<g class="node">
+  <rect x="233" y="168" width="180" height="56" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="1.2"/>
+  <text x="323" y="189" text-anchor="middle" fill="#26215C" font-size="13" font-weight="600" font-family="Arial">2. Review &amp; approve</text>
+  <text x="323" y="209" text-anchor="middle" fill="#534AB7" font-size="11" font-family="Arial">Admin portal</text>
+</g>
+
+<!-- Arrow 2→3 (skip Lane3 → Azure) -->
+<path d="M 413,196 L 645,196 L 645,268 L 655,268" fill="none" stroke="#888" stroke-width="1.3" marker-end="url(#ah)"/>
+
+<!-- STEP 3: Send email (Azure) -->
+<g class="node">
+  <rect x="660" y="240" width="190" height="56" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.2"/>
+  <text x="755" y="261" text-anchor="middle" fill="#042C53" font-size="13" font-weight="600" font-family="Arial">3. Send email link</text>
+  <text x="755" y="281" text-anchor="middle" fill="#185FA5" font-size="11" font-family="Arial">7-day secure token</text>
+</g>
+
+<!-- Arrow 3→4 (Azure → Facility, going left) -->
+<path d="M 755,296 L 755,308 L 537,308 L 537,318" fill="none" stroke="#888" stroke-width="1.3" marker-end="url(#ah)"/>
+
+<!-- STEP 4: Enter credentials (Facility) -->
+<g class="node">
+  <rect x="447" y="318" width="180" height="56" rx="10" fill="#FAEEDA" stroke="#BA7517" stroke-width="1.2"/>
+  <text x="537" y="339" text-anchor="middle" fill="#412402" font-size="13" font-weight="600" font-family="Arial">4. Enter credentials</text>
+  <text x="537" y="359" text-anchor="middle" fill="#854F0B" font-size="11" font-family="Arial">Secure token link</text>
+</g>
+
+<!-- Arrow 4→5 (Facility → Azure) -->
+<path d="M 627,346 L 645,346 L 645,408 L 655,408" fill="none" stroke="#888" stroke-width="1.3" marker-end="url(#ah)"/>
+
+<!-- STEP 5: Goes live (Azure) -->
+<g class="node">
+  <rect x="660" y="380" width="190" height="56" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.2"/>
+  <text x="755" y="401" text-anchor="middle" fill="#042C53" font-size="13" font-weight="600" font-family="Arial">5. Facility goes live</text>
+  <text x="755" y="421" text-anchor="middle" fill="#185FA5" font-size="11" font-family="Arial">KV secrets + engine</text>
+</g>
+
+<!-- Phase 2 bar -->
+<rect x="0" y="452" width="860" height="20" fill="#888" opacity="0.12"/>
+<text x="430" y="462" text-anchor="middle" fill="#555" font-size="12" font-family="Arial" font-style="italic">— Daily operations — automated every day, no intervention needed —</text>
+
+<!-- STEP 6: Cron (Azure) -->
+<g class="node">
+  <rect x="660" y="480" width="190" height="56" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.2"/>
+  <text x="755" y="501" text-anchor="middle" fill="#042C53" font-size="13" font-weight="600" font-family="Arial">6. 06:00 UAE cron</text>
+  <text x="755" y="521" text-anchor="middle" fill="#185FA5" font-size="11" font-family="Arial">Container App Job fires</text>
+</g>
+
+<line x1="755" y1="536" x2="755" y2="556" stroke="#888" stroke-width="1.3" marker-end="url(#ah)"/>
+
+<!-- STEP 7: Query Shafafiya (Azure) -->
+<g class="node">
+  <rect x="660" y="556" width="190" height="56" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.2"/>
+  <text x="755" y="577" text-anchor="middle" fill="#042C53" font-size="13" font-weight="600" font-family="Arial">7. Query Shafafiya</text>
+  <text x="755" y="597" text-anchor="middle" fill="#185FA5" font-size="11" font-family="Arial">24 × 2-hr intervals</text>
+</g>
+
+<line x1="755" y1="612" x2="755" y2="632" stroke="#888" stroke-width="1.3" marker-end="url(#ah)"/>
+
+<!-- STEP 8: Files to Blob (Azure) -->
+<g class="node">
+  <rect x="660" y="632" width="190" height="56" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.2"/>
+  <text x="755" y="653" text-anchor="middle" fill="#042C53" font-size="13" font-weight="600" font-family="Arial">8. Files to Blob</text>
+  <text x="755" y="673" text-anchor="middle" fill="#185FA5" font-size="11" font-family="Arial">claims + remittance + resub</text>
+</g>
+
+<!-- Branching arrow from Step 8 to Steps 9 and 10 -->
+<path d="M 755,688 L 755,700 L 108,700" fill="none" stroke="#888" stroke-width="1.3"/>
+<circle cx="323" cy="700" r="4" fill="#888" opacity="0.5"/>
+<line x1="108" y1="700" x2="108" y2="710" stroke="#888" stroke-width="1.3" marker-end="url(#ah)"/>
+<line x1="323" y1="700" x2="323" y2="710" stroke="#888" stroke-width="1.3" marker-end="url(#ah)"/>
+
+<!-- STEP 9: Pull to Reggr (Saleem) -->
+<g class="node">
+  <rect x="18" y="710" width="180" height="56" rx="10" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.2"/>
+  <text x="108" y="731" text-anchor="middle" fill="#085041" font-size="13" font-weight="600" font-family="Arial">9. Pull to Reggr\</text>
+  <text x="108" y="751" text-anchor="middle" fill="#0F6E56" font-size="11" font-family="Arial">07:00 UAE — auto daily</text>
+</g>
+
+<!-- STEP 10: Monitor portals (Kaaryaa + Saleem) -->
+<g class="node">
+  <rect x="233" y="710" width="180" height="56" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="1.2"/>
+  <text x="323" y="731" text-anchor="middle" fill="#26215C" font-size="13" font-weight="600" font-family="Arial">10. Monitor portals</text>
+  <text x="323" y="751" text-anchor="middle" fill="#534AB7" font-size="11" font-family="Arial">admin + reseller view</text>
+</g>
+
+</svg>
+
+<div style="max-width:900px;margin:20px auto;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;font-size:12px;">
+  <div style="background:#E1F5EE;border-left:3px solid #1D9E75;padding:10px;border-radius:6px;">
+    <strong style="color:#085041">Saleem</strong><br>
+    <span style="color:#0F6E56">Reseller portal · 15% share · Reggr\ pull</span>
+  </div>
+  <div style="background:#EEEDFE;border-left:3px solid #534AB7;padding:10px;border-radius:6px;">
+    <strong style="color:#26215C">Kaaryaa admin</strong><br>
+    <span style="color:#534AB7">Admin portal · Full visibility · Approvals</span>
+  </div>
+  <div style="background:#FAEEDA;border-left:3px solid #BA7517;padding:10px;border-radius:6px;">
+    <strong style="color:#412402">Facility</strong><br>
+    <span style="color:#854F0B">One-time credential setup · Fully automated after</span>
+  </div>
+  <div style="background:#E6F1FB;border-left:3px solid #185FA5;padding:10px;border-radius:6px;">
+    <strong style="color:#042C53">Azure cloud</strong><br>
+    <span style="color:#185FA5">Engine · Blob · KV · ACS · UAE North</span>
+  </div>
+</div>
+</body>
+</html>

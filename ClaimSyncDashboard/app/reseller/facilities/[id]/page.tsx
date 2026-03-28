@@ -5,17 +5,24 @@ import { useRouter, useParams } from 'next/navigation'
 import {
   ArrowLeft, RefreshCw, Loader2, CheckCircle2,
   Building2, AlertTriangle, Calendar, Download,
-  Activity, BarChart2, FileText, Cpu, Play
+  Activity, BarChart2, FileText, Cpu, Play,
+  ChevronUp, Search
 } from 'lucide-react'
+import RunFilesTab from '@/components/runs/RunFilesTab'
+import RunIntervalsTab from '@/components/runs/RunIntervalsTab'
+import { FileRecord, IntervalRecord } from '@/components/runs/types'
 
-// ── Types matching actual API response ─────────────────────────────────────────
 interface RunRecord {
   run_id:               string
   started_at:           string
   ended_at:             string | null
   status:               string
   files_downloaded:     number
+  from_date:            string
+  to_date:              string
+  intervals_total:      number
   intervals_completed:  number
+  trigger_type:         string
   engine_version:       string
 }
 
@@ -31,12 +38,12 @@ interface FacilityDetail {
   recent_runs:      RunRecord[]
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     success:  'bg-emerald-100 text-emerald-700',
     failed:   'bg-red-100 text-red-700',
     running:  'bg-blue-100 text-blue-700',
+    partial:  'bg-yellow-100 text-yellow-700',
     active:   'bg-emerald-100 text-emerald-700',
     inactive: 'bg-gray-100 text-gray-500',
   }
@@ -60,22 +67,19 @@ function StatCard({ icon, label, value, sub, bg }: {
   )
 }
 
-function fmtDate(dt: string | null) {
-  if (!dt) return '—'
+function fmtDt(dt: string | null) {
+  if (!dt) return '\u2014'
   return new Date(dt).toLocaleString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   })
 }
 
-function fmtDuration(start: string, end: string | null) {
-  if (!end) return '—'
-  const sec = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000)
-  if (sec < 60) return `${sec}s`
-  return `${Math.floor(sec / 60)}m ${sec % 60}s`
+function fmtDate(dt: string | null) {
+  if (!dt) return '\u2014'
+  return new Date(dt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-// ── Main Page ──────────────────────────────────────────────────────────────────
 export default function ResellerFacilityDetailPage() {
   const router     = useRouter()
   const params     = useParams()
@@ -84,7 +88,16 @@ export default function ResellerFacilityDetailPage() {
   const [facility, setFacility] = useState<FacilityDetail | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
-  const [user,     setUser]     = useState<any>(null)
+
+  // Run detail state
+  const [runs, setRuns] = useState<RunRecord[]>([])
+  const [runsLoading, setRunsLoading] = useState(false)
+  const [expandedRun, setExpandedRun] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<Record<string, 'files' | 'intervals'>>({})
+  const [files, setFiles] = useState<Record<string, FileRecord[]>>({})
+  const [filesLoading, setFilesLoading] = useState<string | null>(null)
+  const [intervals, setIntervals] = useState<Record<string, IntervalRecord[]>>({})
+  const [intervalsLoading, setIntervalsLoading] = useState<string | null>(null)
 
   const getToken = () => typeof window !== 'undefined' ? sessionStorage.getItem('cs_token') : null
 
@@ -106,7 +119,8 @@ export default function ResellerFacilityDetailPage() {
       })
       if (res.status === 401) { logout(); return }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setFacility(await res.json())
+      const data = await res.json()
+      setFacility(data)
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -114,18 +128,82 @@ export default function ResellerFacilityDetailPage() {
     }
   }, [facilityId])
 
-  useEffect(() => {
-    const u = typeof window !== 'undefined' ? sessionStorage.getItem('cs_user') : null
-    if (u) setUser(JSON.parse(u))
-    load()
-  }, [load])
+  // Load runs separately using facility_code (once facility is loaded)
+  const loadRuns = useCallback(async (code: string) => {
+    const token = getToken()
+    if (!token) return
+    setRunsLoading(true)
+    try {
+      const res = await fetch(`/api/claimssync/reseller/facilities/${code}/runs`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setRuns(data.runs ?? [])
+      }
+    } catch { /* ignore */ }
+    finally { setRunsLoading(false) }
+  }, [])
 
-  // ── Derived stats ──────────────────────────────────────────────────────────
-  const runs         = facility?.recent_runs ?? []
-  const totalFiles   = runs.reduce((s, r) => s + (r.files_downloaded ?? 0), 0)
-  const successCount = runs.filter(r => r.status === 'success').length
-  const successRate  = runs.length > 0 ? Math.round((successCount / runs.length) * 100) : 100
-  const lastRun      = runs[0] ?? null
+  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    if (!facility) return
+    loadRuns(facility.facility_code)
+    const id = setInterval(() => loadRuns(facility.facility_code), 30000)
+    return () => clearInterval(id)
+  }, [facility?.facility_code, loadRuns])
+
+  const loadFiles = async (runId: string, code: string) => {
+    if (files[runId]) return
+    const token = getToken()
+    if (!token) return
+    setFilesLoading(runId)
+    try {
+      const res = await fetch(`/api/claimssync/reseller/facilities/${code}/runs/${runId}/files`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setFiles(prev => ({ ...prev, [runId]: data.files ?? [] }))
+      }
+    } catch { /* ignore */ }
+    finally { setFilesLoading(null) }
+  }
+
+  const loadIntervals = async (runId: string, code: string) => {
+    if (intervals[runId]) return
+    const token = getToken()
+    if (!token) return
+    setIntervalsLoading(runId)
+    try {
+      const res = await fetch(`/api/claimssync/reseller/facilities/${code}/runs/${runId}/intervals`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setIntervals(prev => ({ ...prev, [runId]: data.intervals ?? [] }))
+      }
+    } catch { /* ignore */ }
+    finally { setIntervalsLoading(null) }
+  }
+
+  const toggleRun = (runId: string) => {
+    if (!facility) return
+    if (expandedRun === runId) {
+      setExpandedRun(null)
+    } else {
+      setExpandedRun(runId)
+      setActiveTab(prev => ({ ...prev, [runId]: prev[runId] || 'files' }))
+      loadFiles(runId, facility.facility_code)
+      loadIntervals(runId, facility.facility_code)
+    }
+  }
+
+  const summaryRuns = facility?.recent_runs ?? []
+  const totalFiles   = summaryRuns.reduce((s, r) => s + (r.files_downloaded ?? 0), 0)
+  const successCount = summaryRuns.filter(r => r.status === 'success').length
+  const successRate  = summaryRuns.length > 0 ? Math.round((successCount / summaryRuns.length) * 100) : 100
+  const lastRun      = summaryRuns[0] ?? null
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -135,7 +213,6 @@ export default function ResellerFacilityDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-blue-800 text-white px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
@@ -143,12 +220,13 @@ export default function ResellerFacilityDetailPage() {
           </div>
           <div>
             <span className="font-semibold">ClaimSync</span>
-            <span className="text-blue-300 text-xs ml-2">— Reseller Portal</span>
+            <span className="text-blue-300 text-xs ml-2">&mdash; Reseller Portal</span>
           </div>
         </div>
         <div className="flex items-center gap-4">
           <nav className="flex items-center gap-4 text-sm">
             <button onClick={() => router.push('/reseller/dashboard')}  className="text-blue-200 hover:text-white transition-colors">Dashboard</button>
+            <button onClick={() => router.push('/reseller/facilities')} className="text-blue-200 hover:text-white transition-colors">Facilities</button>
             <button onClick={() => router.push('/reseller/onboarding')} className="text-blue-200 hover:text-white transition-colors">Requests</button>
           </nav>
           <button onClick={logout} className="text-xs text-blue-300 hover:text-white">Logout</button>
@@ -156,27 +234,19 @@ export default function ResellerFacilityDetailPage() {
       </header>
 
       <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
-
-        {/* Back */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => router.push('/reseller/dashboard')}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to Dashboard
+          <button onClick={() => router.push('/reseller/facilities')}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 transition-colors">
+            <ArrowLeft className="w-3.5 h-3.5" /> Facilities
           </button>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 transition-colors"
-          >
+          <button onClick={load}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 transition-colors">
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
           {facility && (
-            <button
-              onClick={() => router.push(`/admin/facilities/${facility.facility_code}/adhoc-run`)}
-              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 bg-white hover:bg-blue-50 transition-colors"
-            >
-              <Play className="w-3.5 h-3.5" /> Run Adhoc
+            <button onClick={() => router.push(`/reseller/facilities/${facilityId}/adhoc-run`)}
+              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 bg-white hover:bg-blue-50 transition-colors">
+              <Play className="w-3.5 h-3.5" /> Adhoc Run
             </button>
           )}
         </div>
@@ -189,7 +259,6 @@ export default function ResellerFacilityDetailPage() {
 
         {facility && (
           <>
-            {/* Facility header */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
@@ -203,85 +272,112 @@ export default function ResellerFacilityDetailPage() {
                       <StatusBadge status={facility.status} />
                     </div>
                     <div className="text-xs text-gray-400 mt-0.5">
-                      {facility.tenant_name} · Lookback {facility.lookback_days} days
+                      {facility.tenant_name} &middot; Lookback {facility.lookback_days} days
                     </div>
                   </div>
                 </div>
                 <div className="text-right text-xs text-gray-400">
-                  <div>Last sync {fmtDate(lastRun?.started_at ?? null)}</div>
+                  <div>Last sync {fmtDt(lastRun?.started_at ?? null)}</div>
                   {lastRun && <div className="mt-0.5"><StatusBadge status={lastRun.status} /></div>}
                 </div>
               </div>
             </div>
 
-            {/* Stats row */}
             <div className="grid grid-cols-4 gap-4">
-              <StatCard
-                icon={<Activity className="w-4 h-4 text-blue-600" />}
-                bg="bg-blue-50"
-                label="Total Runs"
-                value={runs.length}
-                sub="last 8 shown"
-              />
-              <StatCard
-                icon={<Download className="w-4 h-4 text-emerald-600" />}
-                bg="bg-emerald-50"
-                label="Files Downloaded"
-                value={totalFiles.toLocaleString()}
-              />
-              <StatCard
-                icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />}
-                bg="bg-emerald-50"
-                label="Success Rate"
-                value={`${successRate}%`}
-              />
-              <StatCard
-                icon={<Calendar className="w-4 h-4 text-gray-500" />}
-                bg="bg-gray-50"
-                label="Last Sync"
-                value={lastRun ? new Date(lastRun.started_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—'}
-                sub={lastRun ? new Date(lastRun.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : undefined}
-              />
+              <StatCard icon={<Activity className="w-4 h-4 text-blue-600" />} bg="bg-blue-50" label="Total Runs" value={summaryRuns.length} sub="last 10 shown" />
+              <StatCard icon={<Download className="w-4 h-4 text-emerald-600" />} bg="bg-emerald-50" label="Files Downloaded" value={totalFiles.toLocaleString()} />
+              <StatCard icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />} bg="bg-emerald-50" label="Success Rate" value={`${successRate}%`} />
+              <StatCard icon={<Calendar className="w-4 h-4 text-gray-500" />} bg="bg-gray-50" label="Last Sync"
+                value={lastRun ? new Date(lastRun.started_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '\u2014'}
+                sub={lastRun ? new Date(lastRun.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : undefined} />
             </div>
 
-            {/* Run history table */}
+            {/* Run history with expandable Files/Intervals tabs */}
             <div className="bg-white rounded-xl border border-gray-200">
               <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-2">
                   <BarChart2 className="w-4 h-4 text-blue-600" />
                   <span className="text-sm font-semibold text-gray-700">Sync Run History</span>
-                  <span className="text-xs text-gray-400">(recent {runs.length})</span>
+                  <span className="text-xs text-gray-400">(auto-refreshes)</span>
                 </div>
+                <button onClick={() => facility && loadRuns(facility.facility_code)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
+                  <RefreshCw className="w-3 h-3" /> Refresh
+                </button>
               </div>
 
-              {runs.length === 0 ? (
+              {runsLoading && runs.length === 0 ? (
+                <div className="py-12 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading runs...
+                </div>
+              ) : runs.length === 0 ? (
                 <div className="py-12 text-center">
                   <FileText className="w-8 h-8 text-gray-200 mx-auto mb-2" />
                   <p className="text-sm text-gray-400">No sync runs yet</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-50">
-                  <div className="grid grid-cols-5 gap-4 px-5 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide">
+                  <div className="grid grid-cols-6 gap-3 px-5 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-50">
                     <div>Started</div>
+                    <div>From</div>
+                    <div>To</div>
                     <div>Status</div>
                     <div className="text-right">Files</div>
-                    <div className="text-right">Intervals</div>
-                    <div className="text-right">Duration</div>
+                    <div className="text-right">Actions</div>
                   </div>
                   {runs.map(run => (
-                    <div key={run.run_id} className="grid grid-cols-5 gap-4 px-5 py-3 items-center hover:bg-gray-50 transition-colors">
-                      <div className="text-xs text-gray-700">{fmtDate(run.started_at)}</div>
-                      <div>
-                        <StatusBadge status={run.status} />
-                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                          <Cpu className="w-3 h-3" /> v{run.engine_version}
+                    <div key={run.run_id}>
+                      <div className="grid grid-cols-6 gap-3 px-5 py-3 items-center hover:bg-gray-50 transition-colors">
+                        <div className="text-xs text-gray-700">{fmtDt(run.started_at)}</div>
+                        <div className="text-xs text-gray-500">{fmtDate(run.from_date)}</div>
+                        <div className="text-xs text-gray-500">{fmtDate(run.to_date)}</div>
+                        <div>
+                          <StatusBadge status={run.status} />
+                          {run.trigger_type === 'manual' && <span className="ml-1 text-xs text-blue-500">(adhoc)</span>}
+                        </div>
+                        <div className="text-right text-sm font-semibold text-gray-800">{run.files_downloaded}</div>
+                        <div className="text-right">
+                          {run.status === 'success' && (
+                            <button onClick={() => toggleRun(run.run_id)}
+                              className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 ml-auto">
+                              {expandedRun === run.run_id
+                                ? <><ChevronUp className="w-3 h-3" /> Hide</>
+                                : <><Search className="w-3 h-3" /> Details</>}
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-sm font-semibold text-gray-800">{run.files_downloaded}</span>
-                      </div>
-                      <div className="text-right text-xs text-gray-500">{run.intervals_completed}</div>
-                      <div className="text-right text-xs text-gray-500">{fmtDuration(run.started_at, run.ended_at)}</div>
+
+                      {expandedRun === run.run_id && (
+                        <div className="px-5 pb-4 bg-gray-50 border-t border-gray-100">
+                          <div className="flex gap-1 pt-3 pb-2 border-b border-gray-200 mb-3">
+                            <button
+                              onClick={() => setActiveTab(prev => ({ ...prev, [run.run_id]: 'files' }))}
+                              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                                (activeTab[run.run_id] || 'files') === 'files'
+                                  ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+                              }`}>
+                              Files ({(files[run.run_id] || []).length})
+                            </button>
+                            <button
+                              onClick={() => { setActiveTab(prev => ({ ...prev, [run.run_id]: 'intervals' })); loadIntervals(run.run_id, facility.facility_code) }}
+                              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                                activeTab[run.run_id] === 'intervals'
+                                  ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+                              }`}>
+                              Intervals ({run.intervals_total})
+                            </button>
+                          </div>
+
+                          {(activeTab[run.run_id] || 'files') === 'files' && (
+                            <RunFilesTab files={files[run.run_id] || []} loading={filesLoading === run.run_id}
+                              facilityCode={facility.facility_code} runId={run.run_id} />
+                          )}
+                          {activeTab[run.run_id] === 'intervals' && (
+                            <RunIntervalsTab intervals={intervals[run.run_id] || []} loading={intervalsLoading === run.run_id}
+                              facilityCode={facility.facility_code} getToken={getToken} apiPrefix="/api/claimssync/reseller" />
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

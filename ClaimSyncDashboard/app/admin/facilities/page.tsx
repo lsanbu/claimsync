@@ -19,6 +19,9 @@ interface Facility {
   tenant_name:      string
   tenant_code:      string
   reseller_name:    string
+  client_code:      string | null
+  client_name:      string | null
+  client_id:        string | null
   blob_container:   string
   trial_until:      string | null
   valid_until:      string | null
@@ -134,6 +137,7 @@ export default function AdminFacilitiesPage() {
             <button onClick={() => router.push('/admin/onboarding')} className="text-blue-200 hover:text-white transition-colors">Onboarding</button>
             <button onClick={() => router.push('/admin/resellers')}  className="text-blue-200 hover:text-white transition-colors">Resellers</button>
             <button onClick={() => router.push('/admin/facilities')} className="text-white font-medium border-b border-white pb-0.5">Facilities</button>
+            <button onClick={() => router.push('/admin/facilities')} className="text-blue-300 hover:text-white transition-colors flex items-center gap-1"><Play className="w-3 h-3" />Adhoc Run</button>
             <button onClick={() => router.push('/admin/revenue')}    className="text-blue-200 hover:text-white transition-colors">Revenue</button>
             {isSuperAdmin && <button onClick={() => router.push('/admin/users')} className="text-blue-200 hover:text-white transition-colors">Users</button>}
           </nav>
@@ -201,78 +205,99 @@ export default function AdminFacilitiesPage() {
 
         {loading ? (
           <div className="flex items-center gap-2 text-gray-400 text-sm py-8 justify-center">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading facilities…
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading facilities...
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-sm text-gray-400">No facilities match</div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="grid grid-cols-7 gap-3 px-5 py-2.5 text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-100 bg-gray-50">
-              <div className="col-span-2">Facility</div>
-              <div>Reseller</div>
-              <div>Plan</div>
-              <div>Sub Status</div>
-              <div>Last Sync</div>
-              <div>Status</div>
-            </div>
-            {filtered.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-400">No facilities match</div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {filtered.map(f => (
-                  <div key={f.facility_id}>
-                    <div
-                      onClick={() => setExpandedId(expandedId === f.facility_id ? null : f.facility_id)}
-                      className="grid grid-cols-7 gap-3 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors cursor-pointer"
-                    >
-                      <div className="col-span-2 flex items-center gap-2">
-                        <div className="shrink-0">
-                          {expandedId === f.facility_id
-                            ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
-                            : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-                          }
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold text-gray-800">{f.facility_name}</div>
-                          <div className="text-xs text-gray-400 font-mono">{f.facility_code}</div>
-                          <div className="text-xs text-gray-400">{f.tenant_name}</div>
-                        </div>
+          <div className="space-y-4">
+            {(() => {
+              const groups: Record<string, Facility[]> = {}
+              filtered.forEach(f => {
+                const key = f.client_code || 'ungrouped'
+                if (!groups[key]) groups[key] = []
+                groups[key].push(f)
+              })
+              return Object.entries(groups).map(([clientCode, facs]) => {
+                const client = facs[0]
+                return (
+                  <div key={clientCode} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    {/* Client group header */}
+                    <div className="px-5 py-2.5 bg-slate-50 border-b border-gray-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-slate-500" />
+                        <span className="text-sm font-semibold text-gray-800">{client.client_name || clientCode}</span>
+                        <span className="text-xs font-mono text-gray-400">{clientCode !== 'ungrouped' ? clientCode : ''}</span>
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{facs.length} facilit{facs.length === 1 ? 'y' : 'ies'}</span>
                       </div>
-                      <div className="text-xs text-gray-600">{f.reseller_name}</div>
-                      <div className="text-xs font-medium text-blue-600">{f.plan_name}</div>
-                      <div>
-                        <StatusBadge status={f.sub_status} />
-                        {f.trial_until && (
-                          <div className="text-xs text-gray-400 mt-0.5">Until {fmtDate(f.trial_until)}</div>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {fmtDateTime(f.last_run_at)}
-                        {f.last_run_status && (
-                          <div className="mt-0.5">
-                            <StatusBadge status={f.last_run_status} />
-                          </div>
-                        )}
-                      </div>
-                      <div><StatusBadge status={f.status} /></div>
+                      <span className="text-xs text-gray-400">{client.reseller_name}</span>
                     </div>
-                    {expandedId === f.facility_id && (
-                      <div className="px-5 pb-4 pt-1 bg-gray-50 border-t border-gray-100 space-y-3">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); router.push(`/admin/facilities/${f.facility_code}/adhoc-run`) }}
-                          className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 bg-white hover:bg-blue-50 transition-colors"
-                        >
-                          <Play className="w-3.5 h-3.5" /> Adhoc Run
-                        </button>
-                        <ResendCredentialToken
-                          facilityId={f.facility_id}
-                          facilityCode={f.facility_code}
-                          currentEmail={null}
-                        />
-                      </div>
-                    )}
+                    {/* Column header */}
+                    <div className="grid grid-cols-6 gap-3 px-5 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-100 bg-gray-50">
+                      <div className="col-span-2">Facility</div>
+                      <div>Plan</div>
+                      <div>Sub Status</div>
+                      <div>Last Sync</div>
+                      <div>Status</div>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {facs.map(f => (
+                        <div key={f.facility_id}>
+                          <div
+                            onClick={() => setExpandedId(expandedId === f.facility_id ? null : f.facility_id)}
+                            className="grid grid-cols-6 gap-3 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors cursor-pointer"
+                          >
+                            <div className="col-span-2 flex items-center gap-2">
+                              <div className="shrink-0">
+                                {expandedId === f.facility_id
+                                  ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                                  : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                                }
+                              </div>
+                              <div>
+                                <div className="text-sm font-semibold text-gray-800">{f.facility_name}</div>
+                                <div className="text-xs text-gray-400 font-mono">{f.facility_code}</div>
+                              </div>
+                            </div>
+                            <div className="text-xs font-medium text-blue-600">{f.plan_name}</div>
+                            <div>
+                              <StatusBadge status={f.sub_status} />
+                              {f.trial_until && (
+                                <div className="text-xs text-gray-400 mt-0.5">Until {fmtDate(f.trial_until)}</div>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {fmtDateTime(f.last_run_at)}
+                              {f.last_run_status && (
+                                <div className="mt-0.5">
+                                  <StatusBadge status={f.last_run_status} />
+                                </div>
+                              )}
+                            </div>
+                            <div><StatusBadge status={f.status} /></div>
+                          </div>
+                          {expandedId === f.facility_id && (
+                            <div className="px-5 pb-4 pt-1 bg-gray-50 border-t border-gray-100 space-y-3">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); router.push(`/admin/facilities/${f.facility_code}/adhoc-run`) }}
+                                className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 bg-white hover:bg-blue-50 transition-colors"
+                              >
+                                <Play className="w-3.5 h-3.5" /> Adhoc Run
+                              </button>
+                              <ResendCredentialToken
+                                facilityId={f.facility_id}
+                                facilityCode={f.facility_code}
+                                currentEmail={null}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
+                )
+              })
+            })()}
           </div>
         )}
       </div>

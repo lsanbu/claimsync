@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import {
   Building2, CheckCircle2, Clock, AlertTriangle,
   Plus, RefreshCw, LogOut, Loader2, ChevronRight,
-  FileText, Calendar
+  FileText, Calendar, Activity
 } from 'lucide-react'
 
 interface DashboardData {
@@ -221,6 +221,36 @@ export default function ResellerDashboardPage() {
             ))}
           </div>
         </div>
+
+        {/* Recent Activity */}
+        {(data?.last_runs?.length ?? 0) > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+              <Activity className="w-4 h-4 text-blue-600" />
+              <h2 className="text-sm font-semibold text-gray-700">Recent Sync Activity</h2>
+            </div>
+            <div className="divide-y divide-gray-50">
+              <div className="grid grid-cols-4 gap-3 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-50">
+                <div>Facility</div>
+                <div>Started</div>
+                <div>Status</div>
+                <div className="text-right">Files</div>
+              </div>
+              {data!.last_runs.slice(0, 5).map(r => (
+                <div key={r.facility_id}
+                  className="grid grid-cols-4 gap-3 px-4 py-2.5 items-center hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={() => router.push(`/reseller/facilities/${r.facility_id}`)}>
+                  <div>
+                    <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">{r.facility_code}</span>
+                  </div>
+                  <div className="text-xs text-gray-500">{fmtDate(r.started_at)}</div>
+                  <div><StatusBadge status={r.status} /></div>
+                  <div className="text-right text-sm font-semibold text-gray-800">{r.files_downloaded}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Quick actions */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

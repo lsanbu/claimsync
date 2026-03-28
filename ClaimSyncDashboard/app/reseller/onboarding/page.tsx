@@ -143,6 +143,9 @@ export default function ResellerOnboardingPage() {
             <button onClick={() => router.push('/reseller/dashboard')} className="text-blue-200 hover:text-white transition-colors">Dashboard</button>
             <button onClick={() => router.push('/reseller/onboarding')} className="text-white font-medium border-b border-white pb-0.5">Requests</button>
             <button onClick={() => router.push('/reseller/onboard')} className="text-blue-200 hover:text-white transition-colors">+ New Facility</button>
+            {/* FUTURE: Adhoc Run for resellers — enable in Phase 5
+            <button onClick={() => router.push('/reseller/facilities')} className="text-blue-300 hover:text-white transition-colors">Adhoc Run</button>
+            */}
           </nav>
           <button onClick={logout} className="text-xs text-blue-300 hover:text-white">Logout</button>
         </div>

@@ -76,6 +76,7 @@ def admin_dashboard(user: dict = Depends(require_admin)):
              WHERE status = 'active')                              AS active_facilities,
             (SELECT COUNT(*) FROM {SCHEMA}.resellers
              WHERE status = 'active')                             AS active_resellers,
+            (SELECT COUNT(*) FROM {SCHEMA}.clients)               AS total_clients,
             (SELECT COUNT(*) FROM {SCHEMA}.onboarding_requests
              WHERE status IN ('submitted','reviewing'))            AS pending_approvals,
             (SELECT COUNT(*) FROM {SCHEMA}.onboarding_requests
@@ -117,10 +118,39 @@ def admin_dashboard(user: dict = Depends(require_admin)):
         """, ()
     )
 
+    # Recent runs across all facilities
+    recent_runs = query(
+        f"""
+        SELECT
+            r.run_id::text,
+            r.started_at,
+            r.ended_at,
+            r.status,
+            r.files_downloaded,
+            r.search_from_date AS from_date,
+            r.search_to_date   AS to_date,
+            r.engine_version,
+            r.intervals_total,
+            r.intervals_completed,
+            r.trigger_type,
+            f.facility_code,
+            f.facility_name
+        FROM {SCHEMA}.sync_run_log r
+        JOIN {SCHEMA}.tenant_facilities f ON r.facility_id = f.facility_id
+        ORDER BY r.started_at DESC
+        LIMIT 10
+        """, ()
+    )
+    for r in recent_runs:
+        for k in ("started_at", "ended_at", "from_date", "to_date"):
+            if r.get(k) and hasattr(r[k], "isoformat"):
+                r[k] = r[k].isoformat()
+
     return {
         "stats":    stats,
         "recent_onboarding": recent,
         "expiring_subscriptions": expiring,
+        "recent_runs": recent_runs,
     }
 
 
@@ -244,6 +274,31 @@ def approve_onboarding(
         )
         tenant_id = cur.fetchone()[0]
 
+        # 1b. Create or resolve client
+        client_id = req.get("client_id")
+        if client_id:
+            # Case B: adding facility to existing client
+            pass
+        else:
+            # Case A: auto-create client from onboarding request
+            client_code = short_code
+            cur.execute(
+                f"""
+                INSERT INTO {SCHEMA}.clients (
+                    reseller_id, tenant_id, client_code, client_name,
+                    contact_name, contact_email, plan, status
+                ) VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, 'active')
+                ON CONFLICT (client_code) DO UPDATE SET client_name = EXCLUDED.client_name
+                RETURNING client_id
+                """,
+                (
+                    req["reseller_id"], tenant_id, client_code,
+                    req["tenant_name"], req["contact_name"], req["contact_email"],
+                    req.get("requested_plan_code", "STARTER").lower() if req.get("requested_plan_code") else "starter",
+                )
+            )
+            client_id = cur.fetchone()[0]
+
         # 2. Get service provider + default plan
         cur.execute(
             f"SELECT provider_id FROM {SCHEMA}.service_providers WHERE code='SHAFAFIYA' LIMIT 1"
@@ -277,27 +332,27 @@ def approve_onboarding(
             existing = cur.fetchone()
 
             if existing:
-                # Reactivate existing facility
+                # Reactivate existing facility + link to client
                 cur.execute(
                     f"""
                     UPDATE {SCHEMA}.tenant_facilities
-                    SET status = 'active', tenant_id = %s, updated_at = NOW()
+                    SET status = 'active', tenant_id = %s, client_id = %s, updated_at = NOW()
                     WHERE facility_code = %s
                     RETURNING facility_id
                     """,
-                    (tenant_id, fc)
+                    (tenant_id, client_id, fc)
                 )
                 fac_row = cur.fetchone()
             else:
-                # Create new facility as active
+                # Create new facility as active, linked to client
                 cur.execute(
                     f"""
                     INSERT INTO {SCHEMA}.tenant_facilities (
                         tenant_id, service_provider_id,
                         facility_code, facility_name,
                         blob_container, kv_secret_prefix,
-                        lookback_days, status
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'active')
+                        lookback_days, client_id, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active')
                     RETURNING facility_id
                     """,
                     (
@@ -305,6 +360,7 @@ def approve_onboarding(
                         fc, fac.get("facility_name", fc),
                         blob_cont, kv_prefix,
                         fac.get("lookback_days", 90),
+                        client_id,
                     )
                 )
                 fac_row = cur.fetchone()
@@ -502,6 +558,9 @@ def list_all_facilities(user: dict = Depends(require_admin)):
             t.name          AS tenant_name,
             t.short_code    AS tenant_code,
             rs.name         AS reseller_name,
+            cl.client_code,
+            cl.client_name,
+            cl.client_id::text AS client_id,
             fs.status       AS sub_status,
             fs.trial_until,
             fs.valid_until,
@@ -512,6 +571,7 @@ def list_all_facilities(user: dict = Depends(require_admin)):
         FROM {SCHEMA}.tenant_facilities f
         JOIN {SCHEMA}.tenants t    ON f.tenant_id = t.tenant_id
         LEFT JOIN {SCHEMA}.resellers rs ON t.reseller_id = rs.reseller_id
+        LEFT JOIN {SCHEMA}.clients cl   ON f.client_id = cl.client_id
         LEFT JOIN {SCHEMA}.facility_subscriptions fs ON fs.facility_id = f.facility_id
         LEFT JOIN {SCHEMA}.subscription_plans sp     ON sp.plan_id = fs.plan_id
         LEFT JOIN LATERAL (
@@ -520,9 +580,83 @@ def list_all_facilities(user: dict = Depends(require_admin)):
             WHERE facility_id = f.facility_id
             ORDER BY started_at DESC LIMIT 1
         ) lr ON TRUE
-        ORDER BY rs.name, t.name, f.facility_code
+        ORDER BY cl.client_name NULLS LAST, f.facility_code
         """, ()
     )
+
+
+# ── GET /admin/clients ────────────────────────────────────────────────────────
+
+@router.get("/clients", summary="All clients with facility count")
+def list_clients(user: dict = Depends(require_admin)):
+    return query(
+        f"""
+        SELECT
+            c.client_id::text,
+            c.client_code,
+            c.client_name,
+            c.plan,
+            c.status,
+            c.contact_name,
+            c.contact_email,
+            c.billing_email,
+            c.created_at,
+            rs.name AS reseller_name,
+            COUNT(f.facility_id) AS facility_count
+        FROM {SCHEMA}.clients c
+        LEFT JOIN {SCHEMA}.resellers rs ON c.reseller_id = rs.reseller_id
+        LEFT JOIN {SCHEMA}.tenant_facilities f ON f.client_id = c.client_id
+        GROUP BY c.client_id, rs.name
+        ORDER BY c.client_name
+        """, ()
+    )
+
+
+@router.get("/clients/{client_id}", summary="Single client with facilities")
+def get_client(client_id: str = Path(...), user: dict = Depends(require_admin)):
+    client = query_one(
+        f"""
+        SELECT c.*, c.client_id::text AS client_id, c.reseller_id::text AS reseller_id,
+               c.tenant_id::text AS tenant_id, rs.name AS reseller_name
+        FROM {SCHEMA}.clients c
+        LEFT JOIN {SCHEMA}.resellers rs ON c.reseller_id = rs.reseller_id
+        WHERE c.client_id = %s::uuid
+        """, (client_id,)
+    )
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    facilities = query(
+        f"""
+        SELECT f.facility_id::text, f.facility_code, f.facility_name, f.status
+        FROM {SCHEMA}.tenant_facilities f
+        WHERE f.client_id = %s::uuid
+        ORDER BY f.facility_code
+        """, (client_id,)
+    )
+    return {**client, "facilities": facilities}
+
+
+@router.put("/clients/{client_id}", summary="Update client")
+def update_client(
+    client_id: str = Path(...),
+    body: dict = Body(...),
+    user: dict = Depends(require_admin)
+):
+    allowed = {"client_name", "contact_name", "contact_email", "contact_phone",
+               "billing_email", "plan", "status", "notes", "legal_name"}
+    updates = {k: v for k, v in body.items() if k in allowed and v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE {SCHEMA}.clients SET {set_clause} WHERE client_id = %s::uuid",
+            (*updates.values(), client_id)
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Client not found")
+    return {"status": "updated", "client_id": client_id}
 
 
 # ── GET /admin/users — super admin only ───────────────────────────────────────

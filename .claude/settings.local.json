@@ -16,7 +16,25 @@
       "Bash(az monitor:*)",
       "Bash(PGPASSWORD='ClaimSync@DB2026!' psql -h claimssync-db.postgres.database.azure.com -U claimsyncadmin -d postgres -c \"SELECT tf.facility_code, tf.status, sp.code AS provider_code, sp.is_active FROM claimssync.tenant_facilities tf LEFT JOIN claimssync.service_providers sp ON sp.provider_id = tf.service_provider_id ORDER BY tf.facility_code;\" 2>&1)",
       "Bash(python:*)",
-      "Bash(az storage:*)"
+      "Bash(az storage:*)",
+      "Bash(az postgres:*)",
+      "Bash(npm run:*)",
+      "Bash(npx next:*)",
+      "Bash(docker tag:*)",
+      "Bash(pip install:*)",
+      "Bash(az --version)",
+      "Bash(az ad:*)",
+      "Bash(az rest:*)",
+      "Bash(for i:*)",
+      "Bash(do docker:*)",
+      "Bash(break)",
+      "Bash(echo \"Waiting... \\($i\\)\")",
+      "Bash(done)",
+      "Bash(pyinstaller --onefile --name ClaimSyncPull --collect-all azure.storage.blob --collect-all azure.core --hidden-import requests ClaimSyncPull.py)",
+      "Bash(\"D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncDocker/dist/ClaimSyncPull.exe\" --help 2>&1)",
+      "Bash(pyinstaller --onefile --name ClaimSyncPull --hidden-import azure.storage.blob --hidden-import azure.storage.blob._shared --hidden-import azure.storage.blob._generated --hidden-import azure.core --hidden-import azure.core.pipeline --hidden-import azure.core.pipeline.transport --hidden-import azure.core.pipeline.policies --hidden-import requests --hidden-import urllib3 --hidden-import certifi --hidden-import charset_normalizer --collect-submodules azure.storage.blob --collect-submodules azure.core --collect-data certifi ClaimSyncPull.py)",
+      "Bash(pyinstaller --version)",
+      "Bash(\"D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncDocker/dist/ClaimSyncPull.exe\" --help)"
     ]
   }
 }

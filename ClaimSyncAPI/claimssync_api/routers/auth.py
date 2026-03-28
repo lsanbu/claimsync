@@ -45,7 +45,8 @@ bearer = HTTPBearer(auto_error=False)
 
 JWT_SECRET  = os.environ.get("CLAIMSSYNC_JWT_SECRET", "claimsync-dev-secret-change-in-prod")
 JWT_ALGO    = "HS256"
-JWT_EXPIRY  = 8   # hours
+JWT_EXPIRY  = 8   # hours — portal sessions
+SERVICE_TOKEN_EXPIRY = int(os.environ.get("SERVICE_TOKEN_EXPIRE_HOURS", "8760"))  # 365 days — ClaimSyncPull.py
 
 log = logging.getLogger(__name__)
 
@@ -69,8 +70,8 @@ class TokenResponse(BaseModel):
 
 # ── JWT helpers ────────────────────────────────────────────────────────────────
 
-def _create_token(payload: dict) -> str:
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY)
+def _create_token(payload: dict, expiry_hours: int = JWT_EXPIRY) -> str:
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=expiry_hours)
     payload["iat"] = datetime.now(timezone.utc)
     return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
 
@@ -159,6 +160,65 @@ def reseller_login(body: LoginRequest):
     log.info(f"Reseller login: {row['login_email']} ({row['name']})")
 
     return TokenResponse(
+        access_token=token,
+        role="reseller",
+        name=row["name"],
+        email=row["login_email"],
+        reseller_id=row["reseller_id"],
+    )
+
+
+# ── POST /auth/reseller/service-token ─────────────────────────────────────────
+
+class ServiceTokenResponse(BaseModel):
+    access_token:   str
+    token_type:     str = "bearer"
+    expires_in_days: int = SERVICE_TOKEN_EXPIRY // 24
+    role:           str
+    name:           str
+    email:          str
+    reseller_id:    Optional[str] = None
+
+@router.post("/reseller/service-token", response_model=ServiceTokenResponse,
+             summary="Long-lived service token for ClaimSyncPull.py")
+def reseller_service_token(body: LoginRequest):
+    """Same credentials as /reseller/login but returns a 365-day token
+    for automated scripts (ClaimSyncPull.py). Not for browser use."""
+    _check_deps()
+
+    row = query_one(
+        f"""
+        SELECT reseller_id::text, name, login_email, password_hash, status
+        FROM {SCHEMA}.resellers
+        WHERE login_email = %s
+        """,
+        (body.email.lower().strip(),)
+    )
+
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if row["status"] != "active":
+        raise HTTPException(status_code=403, detail=f"Account is {row['status']}")
+    if not row["password_hash"]:
+        raise HTTPException(status_code=401, detail="Account not yet activated — contact Kaaryaa")
+    if not bcrypt.checkpw(body.password.encode(), row["password_hash"].encode()):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = _create_token(
+        {
+            "sub":         row["reseller_id"],
+            "role":        "reseller",
+            "email":       row["login_email"],
+            "name":        row["name"],
+            "reseller_id": row["reseller_id"],
+            "token_type":  "service",
+        },
+        expiry_hours=SERVICE_TOKEN_EXPIRY,
+    )
+
+    log.info(f"Service token issued: {row['login_email']} ({row['name']}) — {SERVICE_TOKEN_EXPIRY // 24} days")
+
+    return ServiceTokenResponse(
         access_token=token,
         role="reseller",
         name=row["name"],

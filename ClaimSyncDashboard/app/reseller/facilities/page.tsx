@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Building2, RefreshCw, Loader2, AlertTriangle,
-  CheckCircle2, XCircle, ChevronRight, Download, Activity
+  CheckCircle2, XCircle, ChevronRight, Download, Activity, Play
 } from 'lucide-react'
 
 interface Facility {
@@ -16,6 +16,9 @@ interface Facility {
   plan_name:        string
   tenant_name:      string
   reseller_name:    string
+  client_code:      string | null
+  client_name:      string | null
+  client_id:        string | null
   trial_until:      string | null
   last_run_at:      string | null
   last_run_status:  string | null
@@ -100,6 +103,9 @@ export default function ResellerFacilitiesPage() {
             <button onClick={() => router.push('/reseller/dashboard')}  className="text-blue-200 hover:text-white transition-colors">Dashboard</button>
             <button onClick={() => router.push('/reseller/facilities')} className="text-white font-medium border-b border-white pb-0.5">Facilities</button>
             <button onClick={() => router.push('/reseller/onboarding')} className="text-blue-200 hover:text-white transition-colors">Requests</button>
+            {/* FUTURE: Adhoc Run for resellers — enable in Phase 5
+            <button onClick={() => router.push('/reseller/facilities')} className="text-blue-300 hover:text-white transition-colors">Adhoc Run</button>
+            */}
             <button onClick={() => router.push('/reseller/onboard')}    className="text-blue-200 hover:text-white transition-colors">+ New Facility</button>
           </nav>
           <button onClick={logout} className="text-xs text-blue-300 hover:text-white">Logout</button>
@@ -139,50 +145,76 @@ export default function ResellerFacilitiesPage() {
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {facilities.map(f => (
-              <div
-                key={f.facility_id}
-                onClick={() => router.push(`/reseller/facilities/${f.facility_id}`)}
-                className="bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all p-4 cursor-pointer"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
-                      <Building2 className="w-4 h-4 text-blue-600" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-gray-800">{f.facility_name}</span>
-                        <span className="text-xs font-mono text-gray-400">{f.facility_code}</span>
-                        <StatusBadge status={f.status} />
-                        <StatusBadge status={f.sub_status} />
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
-                        <span>{f.plan_name}</span>
-                        {f.trial_until && <span>Trial until {new Date(f.trial_until).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
-                        {f.last_run_at && (
-                          <span className="flex items-center gap-1">
-                            <Activity className="w-3 h-3" />
-                            Last sync {fmtDate(f.last_run_at)}
-                            {f.last_run_status && <StatusBadge status={f.last_run_status} />}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+          <div className="space-y-4">
+            {(() => {
+              const groups: Record<string, Facility[]> = {}
+              facilities.forEach(f => {
+                const key = f.client_code || 'ungrouped'
+                if (!groups[key]) groups[key] = []
+                groups[key].push(f)
+              })
+              return Object.entries(groups).map(([clientCode, facs]) => (
+                <div key={clientCode}>
+                  {/* Client group header */}
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <Building2 className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm font-semibold text-gray-700">{facs[0].client_name || clientCode}</span>
+                    {clientCode !== 'ungrouped' && <span className="text-xs font-mono text-gray-400">{clientCode}</span>}
+                    <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{facs.length} facilit{facs.length === 1 ? 'y' : 'ies'}</span>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0 ml-4">
-                    {f.files_downloaded != null && (
-                      <div className="text-right">
-                        <div className="text-sm font-bold text-gray-800">{f.files_downloaded}</div>
-                        <div className="text-xs text-gray-400">files</div>
+                  <div className="space-y-2">
+                    {facs.map(f => (
+                      <div
+                        key={f.facility_id}
+                        onClick={() => router.push(`/reseller/facilities/${f.facility_id}`)}
+                        className="bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all p-4 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-start gap-3">
+                            <div className="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
+                              <Building2 className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-gray-800">{f.facility_name}</span>
+                                <span className="text-xs font-mono text-gray-400">{f.facility_code}</span>
+                                <StatusBadge status={f.status} />
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                                <span>{f.plan_name}</span>
+                                {f.trial_until && <span>Trial until {new Date(f.trial_until).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
+                                {f.last_run_at && (
+                                  <span className="flex items-center gap-1">
+                                    <Activity className="w-3 h-3" />
+                                    Last sync {fmtDate(f.last_run_at)}
+                                    {f.last_run_status && <StatusBadge status={f.last_run_status} />}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-4">
+                            {f.files_downloaded != null && (
+                              <div className="text-right">
+                                <div className="text-sm font-bold text-gray-800">{f.files_downloaded}</div>
+                                <div className="text-xs text-gray-400">files</div>
+                              </div>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); router.push(`/reseller/facilities/${f.facility_id}/adhoc-run`) }}
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-2 py-1 bg-white hover:bg-blue-50 transition-colors"
+                            >
+                              <Play className="w-3 h-3" /> Adhoc
+                            </button>
+                            <ChevronRight className="w-4 h-4 text-gray-300" />
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    <ChevronRight className="w-4 h-4 text-gray-300" />
+                    ))}
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            })()}
           </div>
         )}
       </div>

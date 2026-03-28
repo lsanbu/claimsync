@@ -1,0 +1,176 @@
+Two tasks — Engine :3.9 build/push + GitHub sync for all three repos.
+
+====================================================================
+TASK 1 — Build and push claimsync-engine:3.9
+====================================================================
+Working dir: D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDocker
+
+1. Login to ACR:
+   az acr login --name crclaimssync --subscription ec12e27e-1ef9-46e9-8817-46a10b197381
+
+2. Build:
+   docker build -t crclaimssync.azurecr.io/claimsync-engine:3.9 .
+
+3. Push:
+   docker push crclaimssync.azurecr.io/claimsync-engine:3.9
+
+4. Update job-claimssync-engine to use :3.9:
+   az containerapp job update \
+     --name job-claimssync-engine \
+     --resource-group rg-claimssync-uaenorth-prod \
+     --subscription ec12e27e-1ef9-46e9-8817-46a10b197381 \
+     --image crclaimssync.azurecr.io/claimsync-engine:3.9
+
+5. Verify job image updated:
+   az containerapp job show \
+     --name job-claimssync-engine \
+     --resource-group rg-claimssync-uaenorth-prod \
+     --subscription ec12e27e-1ef9-46e9-8817-46a10b197381 \
+     --query "properties.template.containers[0].image" \
+     --output tsv
+
+====================================================================
+TASK 2 — GitHub sync for all three repos
+====================================================================
+Commit and push latest code to GitHub for all three components.
+
+ENGINE repo:
+   cd D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDocker
+   git add -A
+   git status
+   git commit -m "fix: resubmission blob upload — move to main() after all mainsub() calls
+
+   - Root cause 1: Upload code was inside GetHistoryTxnFileDownload()
+     running per-batch. Files moved by FindnMoveResubmisison() could
+     be gone before upload ran in the same batch.
+     Fix: moved resubmission upload to main() — runs ONCE after all
+     6 mainsub() calls complete, catches all accumulated resub files.
+
+   - Root cause 2: Missing global declarations for _facility_log_fh,
+     _facility_csv_path, _facility_csv_rows, _facility_log_path in
+     main(). Local vars shadowed module globals — CSV + log saw None.
+     Fix: added global declarations at line 1612.
+
+   - Added elif branch to detect files moved to resubmission/ and
+     count them correctly (previously fell to count_notfound).
+
+   - Also adds: search_history XMLs per interval, downloadlog .log
+     and .csv per run, enriched file_manifest fields.
+
+   Engine version: 3.9
+   Verified: 18 resubmission files + 27 total manifest for MF5360 16 Mar"
+   git push origin main
+
+API repo:
+   cd D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncAPI
+   git add -A
+   git status
+   git commit -m "feat: intervals FROM/TO fix + reassign-tenant + adhoc run endpoints
+
+   - API :2.9 — interval from_time/to_time now parsed from request XML blobs
+   - API :2.8 — intervals endpoint, search-history XML viewer endpoint
+   - API :2.7 — reassign-tenant endpoint (super-admin)
+   - API :2.6 — adhoc run endpoint via azure-mgmt-appcontainers
+   - email_service.py: getattr fix for EmailSendResult object
+   - main.py: force=True in basicConfig for stdout logging
+   - file_manifest: enriched with file_id, sender_id, receiver_id,
+     record_count, transaction_date, transaction_timestamp
+   - trigger_type: manual for adhoc (constraint allows scheduled|manual|api)"
+   git push origin main
+
+DASHBOARD repo:
+   cd D:\KaaryaaDigital\Clients\ShafaAPI\ClaimsSync\ClaimSyncDashboard
+   git add -A
+   git status
+   git commit -m "feat: adhoc run page, interval XML viewer, credential page fixes
+
+   - Dashboard :2.17 — interval search history table + side-by-side XML viewer
+   - Dashboard :2.16 — adhoc run page /admin/facilities/[code]/adhoc-run
+     Section A: date range form + Run Now
+     Section B: run history + Files/Intervals tabs
+     Section C: file manifest + CSV export
+     Section D: interval table + SOAP XML viewer modal
+   - Dashboard :2.15 — credential page status normalization fix
+     data.valid ?? (data.status === 'valid')
+   - ResendCredentialToken.tsx — 4-state token UI + resend button
+   - All 18 routes live, /facility/* pending"
+   git push origin main
+
+If git remote is not set up for any repo, show the remote URL
+and ask before pushing. Do not create new repos.
+If there are merge conflicts, report them — do not force push.
+
+
+Investigate and reduce Azure PostgreSQL cost for ClaimSync.
+
+Current cost: PostgreSQL ₹3,578 for March 2026 — dominant cost item.
+Target: reduce to minimum viable SKU for current workload.
+
+Azure sub: ec12e27e-1ef9-46e9-8817-46a10b197381
+RG: rg-claimssync-uaenorth-prod
+DB server: claimssync-db
+
+1. Check current SKU and configuration:
+   az postgres flexible-server show \
+     --name claimssync-db \
+     --resource-group rg-claimssync-uaenorth-prod \
+     --subscription ec12e27e-1ef9-46e9-8817-46a10b197381 \
+     --query "{skuName:sku.name, tier:sku.tier, storageGB:storage.storageSizeGb, backupDays:backup.backupRetentionDays, geoRedundant:backup.geoRedundantBackup, haMode:highAvailability.mode, version:version, state:state}" \
+     --output json
+
+2. Downgrade to minimum viable SKU for current workload:
+   Workload profile:
+   - 2 active facilities, ~10 engine runs/day max
+   - Small DB — sync_runs, file_manifest, credential_tokens only
+   - No concurrent user load — engine + API only
+   - No HA required at this stage
+   - UAE North region
+
+   Apply minimum configuration:
+   a) Downgrade compute to Burstable B1ms (1 vCore, 2 GiB):
+   az postgres flexible-server update \
+     --name claimssync-db \
+     --resource-group rg-claimssync-uaenorth-prod \
+     --subscription ec12e27e-1ef9-46e9-8817-46a10b197381 \
+     --sku-name Standard_B1ms \
+     --tier Burstable
+
+   b) Reduce storage to 32 GB (minimum) if currently higher:
+   az postgres flexible-server update \
+     --name claimssync-db \
+     --resource-group rg-claimssync-uaenorth-prod \
+     --subscription ec12e27e-1ef9-46e9-8817-46a10b197381 \
+     --storage-size 32
+
+   c) Reduce backup retention to 7 days if currently higher:
+   az postgres flexible-server update \
+     --name claimssync-db \
+     --resource-group rg-claimssync-uaenorth-prod \
+     --subscription ec12e27e-1ef9-46e9-8817-46a10b197381 \
+     --backup-retention 7
+
+   d) Disable geo-redundant backup if enabled:
+   az postgres flexible-server update \
+     --name claimssync-db \
+     --resource-group rg-claimssync-uaenorth-prod \
+     --subscription ec12e27e-1ef9-46e9-8817-46a10b197381 \
+     --geo-redundant-backup Disabled
+
+   Note: SKU downgrade causes ~2-3 min restart. Engine cron
+   is 06:00 UAE — safe to do now. API briefly unavailable
+   during restart — acceptable.
+
+3. After update, verify server back online and API healthy:
+   az postgres flexible-server show \
+     --name claimssync-db \
+     --resource-group rg-claimssync-uaenorth-prod \
+     --subscription ec12e27e-1ef9-46e9-8817-46a10b197381 \
+     --query "{skuName:sku.name, tier:sku.tier, storageGB:storage.storageSizeGb, state:state}" \
+     --output json
+
+   curl -s https://ca-claimssync-api.whitewater-45edc27c.uaenorth.azurecontainerapps.io/health
+
+4. Report:
+   - Previous SKU + estimated monthly cost
+   - New SKU + estimated monthly cost
+   - Expected monthly saving in INR
