@@ -19,3 +19,20 @@ export function detectFileType(name: string): string {
   if (/^RSB/i.test(name)) return 'Resubmission'
   return 'Other'
 }
+
+export function fileTypeBadge(dbType: string | null, fileName: string): string {
+  const t = (dbType || '').toLowerCase()
+  if (t === 'claims' || t === 'claim') return 'Claims'
+  if (t === 'remittance') return 'Remittance'
+  if (t === 'resubmission') return 'Resubmission'
+  return detectFileType(fileName)
+}
+
+export function fileTypeBadgeClass(label: string): string {
+  switch (label) {
+    case 'Claims':       return 'bg-blue-50 text-blue-600'
+    case 'Remittance':   return 'bg-green-50 text-green-600'
+    case 'Resubmission': return 'bg-amber-50 text-amber-600'
+    default:             return 'bg-gray-50 text-gray-500'
+  }
+}

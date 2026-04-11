@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 SCHEMA = 'claimssync'
 
 # Engine version tag written to sync_run_log.engine_version
-ENGINE_VERSION = '3.9'
+ENGINE_VERSION = '3.11'
 
 # Shafafiya API returns dates as DD/MM/YYYY HH:MM:SS or DD/MM/YYYY.
 # PostgreSQL expects ISO YYYY-MM-DD [HH:MM:SS]. This helper converts either.

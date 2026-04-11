@@ -34,7 +34,30 @@
       "Bash(\"D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncDocker/dist/ClaimSyncPull.exe\" --help 2>&1)",
       "Bash(pyinstaller --onefile --name ClaimSyncPull --hidden-import azure.storage.blob --hidden-import azure.storage.blob._shared --hidden-import azure.storage.blob._generated --hidden-import azure.core --hidden-import azure.core.pipeline --hidden-import azure.core.pipeline.transport --hidden-import azure.core.pipeline.policies --hidden-import requests --hidden-import urllib3 --hidden-import certifi --hidden-import charset_normalizer --collect-submodules azure.storage.blob --collect-submodules azure.core --collect-data certifi ClaimSyncPull.py)",
       "Bash(pyinstaller --version)",
-      "Bash(\"D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncDocker/dist/ClaimSyncPull.exe\" --help)"
+      "Bash(\"D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncDocker/dist/ClaimSyncPull.exe\" --help)",
+      "Read(//d/KaaryaaDigital/Clients/ShafaAPI/ClaimSync/**)",
+      "Read(//d/KaaryaaDigital/**)",
+      "Bash(mkdir -p \"D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncWeb\")",
+      "Bash(cp \"D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/claimsync_landing.html\" \"D:/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncWeb/index.html\")",
+      "Bash(mkdir -p \"D:/KaaryaaDigital/Kaaryaa/KaaryaaWeb\")",
+      "Bash(cp \"D:/KaaryaaDigital/Kaaryaa/kaaryaa_landing.html\" \"D:/KaaryaaDigital/Kaaryaa/KaaryaaWeb/index.html\")",
+      "Bash(npm install:*)",
+      "Bash(swa deploy:*)",
+      "Read(//d/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncWeb/$HOME/.swa/deploy/**)",
+      "Read(//d/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncWeb/$LOCALAPPDATA/**)",
+      "Read(//d/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncWeb/$HOME/**)",
+      "Bash(SSC=\"$HOME/.swa/deploy/08e29138cd3dcda4ffda6d587aa580028110c1c7/StaticSitesClient.exe\")",
+      "Bash(\"$SSC\" --help)",
+      "Bash(\"$SSC\" upload:*)",
+      "Read(//d/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/ClaimSyncWeb/**)",
+      "Read(//d/KaaryaaDigital/Clients/ShafaAPI/ClaimsSync/**)",
+      "Bash(\"$HOME/.swa/deploy/08e29138cd3dcda4ffda6d587aa580028110c1c7/StaticSitesClient.exe\" upload:*)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -r \"Claims\\\\|Remittance\\\\|Resubmission\\\\|detectFileType\" --include=\"*.ts\" --include=\"*.tsx\" ! -path \"./node_modules/*\" ! -path \"./.next/*\" -n)",
+      "Bash(grep -r \"Claims\\\\|Remittance\\\\|Resubmission\\\\|detectFileType\" --include=\"*.ts\" --include=\"*.tsx\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\")",
+      "Bash(PGPASSWORD='ClaimSync@DB2026!' psql \"host=claimssync-db.postgres.database.azure.com port=5432 dbname=postgres user=claimsyncadmin sslmode=require\" -c \"SELECT run_id, facility_code, started_at, finished_at, status, trigger_type, total_files, claims_count, remittance_count, resubmission_count FROM claimssync.sync_runs WHERE facility_code='MF5360' AND started_at >= '2026-03-25' ORDER BY started_at DESC;\" 2>&1)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDQwNzIwNi1iNzg0LTQ3MzEtYmZkOS0wNGY3N2EwOGFmYjgiLCJyb2xlIjoiYWRtaW4iLCJlbWFpbCI6ImFuYnVAa2FhcnlhYS5jb20iLCJuYW1lIjoiQW5idSIsImFkbWluX2lkIjoiMTA0MDcyMDYtYjc4NC00NzMxLWJmZDktMDRmNzdhMDhhZmI4IiwiaXNfc3VwZXJfYWRtaW4iOnRydWUsImV4cCI6MTc3NDkyMTUwOCwiaWF0IjoxNzc0ODkyNzA4fQ.bKtcyHRNYiBK-qR5UYiajdktLu3g4YogXe_Al44aur8\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDQwNzIwNi1iNzg0LTQ3MzEtYmZkOS0wNGY3N2EwOGFmYjgiLCJyb2xlIjoiYWRtaW4iLCJlbWFpbCI6ImFuYnVAa2FhcnlhYS5jb20iLCJuYW1lIjoiQW5idSIsImFkbWluX2lkIjoiMTA0MDcyMDYtYjc4NC00NzMxLWJmZDktMDRmNzdhMDhhZmI4IiwiaXNfc3VwZXJfYWRtaW4iOnRydWUsImV4cCI6MTc3NDkyMTUwOCwiaWF0IjoxNzQ4ODkyNzA4fQ.bKtcyHRNYiBK-qR5UYiajdktLu3g4YogXe_Al44aur8\")"
     ]
   }
 }

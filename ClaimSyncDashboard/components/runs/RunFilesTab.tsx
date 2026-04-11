@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Loader2, Download } from 'lucide-react'
 import { FileRecord } from './types'
-import { fmtDt, fmtSize, detectFileType } from './helpers'
+import { fmtDt, fmtSize, fileTypeBadge, fileTypeBadgeClass } from './helpers'
 
 interface Props {
   files: FileRecord[]
@@ -19,7 +19,7 @@ export default function RunFilesTab({ files, loading, facilityCode, runId }: Pro
     if (!files.length) return
     const header = 'Filename,File Type,Size,Uploaded At,Blob Path\n'
     const rows = files.map(r =>
-      `"${r.file_name}","${detectFileType(r.file_name)}","${fmtSize(r.file_size_bytes)}","${fmtDt(r.uploaded_at)}","${r.blob_path || ''}"`
+      `"${r.file_name}","${fileTypeBadge(r.file_type, r.file_name)}","${fmtSize(r.file_size_bytes)}","${fmtDt(r.uploaded_at)}","${r.blob_path || ''}"`
     ).join('\n')
     const blob = new Blob([header + rows], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -66,12 +66,7 @@ export default function RunFilesTab({ files, loading, facilityCode, runId }: Pro
             .map(f => (
               <div key={f.file_id} className="grid grid-cols-5 gap-3 px-4 py-2 items-center text-xs">
                 <div className="col-span-2 font-mono text-gray-700 truncate" title={f.file_name}>{f.file_name}</div>
-                <div><span className={`px-1.5 py-0.5 rounded text-xs ${
-                  detectFileType(f.file_name) === 'Claims' ? 'bg-blue-50 text-blue-600' :
-                  detectFileType(f.file_name) === 'Remittance' ? 'bg-purple-50 text-purple-600' :
-                  detectFileType(f.file_name) === 'Resubmission' ? 'bg-amber-50 text-amber-600' :
-                  'bg-gray-50 text-gray-500'
-                }`}>{detectFileType(f.file_name)}</span></div>
+                <div><span className={`px-1.5 py-0.5 rounded text-xs ${fileTypeBadgeClass(fileTypeBadge(f.file_type, f.file_name))}`}>{fileTypeBadge(f.file_type, f.file_name)}</span></div>
                 <div className="text-gray-500">{fmtSize(f.file_size_bytes)}</div>
                 <div className="text-gray-500">{fmtDt(f.uploaded_at)}</div>
               </div>

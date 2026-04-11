@@ -237,6 +237,7 @@ from httpx_soap import soap_search_transactions, soap_download_transaction
 # _blob_enabled         — bool gate read once in main() from CLAIMSSYNC_BLOB_UPLOAD
 _blob_service_client = None
 _blob_enabled        = False
+_storage_url         = ''
 
 # ── Phase 3: DB run logging ────────────────────────────────────────────────────
 # Initialised lazily in main() when CLAIMSSYNC_DB_LOGGING=1.
@@ -1122,6 +1123,8 @@ def GetHistoryTxnFileDownload(xmlBody, transactionID):
 					for _extracted in os.listdir(_dest_folder):
 						_extracted_path = os.path.join(_dest_folder, _extracted)
 						if os.path.isfile(_extracted_path):
+							_extracted_size = os.path.getsize(_extracted_path)
+							_extracted_blob_url = f'{_storage_url}/{_blob_ct}/{_ftype}/{os.path.basename(_extracted_path)}' if _storage_url else None
 							_blob_upload_file(_extracted_path, _blob_ct, _ftype, facility)
 							_facility_log(f'Dwn:{os.path.basename(_extracted_path)} downloaded successfully')
 							if _db_logger and _current_run_id:
@@ -1131,6 +1134,8 @@ def GetHistoryTxnFileDownload(xmlBody, transactionID):
 										run_id=_current_run_id,
 										file_name=os.path.basename(_extracted_path),
 										file_type=_ftype,
+										file_size_bytes=_extracted_size,
+										blob_url=_extracted_blob_url,
 										**_last_file_meta,
 									)
 								except Exception as _exc:
@@ -1147,6 +1152,8 @@ def GetHistoryTxnFileDownload(xmlBody, transactionID):
 						_run_stats['files_remittance'] = _run_stats.get('files_remittance', 0) + 1
 				# ClaimSync2 P2-T06: upload to Azure Blob (no-op unless CLAIMSSYNC_BLOB_UPLOAD=1)
 				_ftype = 'claims' if transactionID == '2' else 'remittance'
+				_dl_size = os.path.getsize(downloadedFilename) if os.path.isfile(downloadedFilename) else None
+				_dl_blob_url = f'{_storage_url}/{_blob_ct}/{_ftype}/{os.path.basename(downloadedFilename)}' if _storage_url else None
 				print(f'  [BLOB] calling _blob_upload_file({os.path.basename(downloadedFilename)}, {_blob_ct}, {_ftype})')
 				_blob_upload_file(downloadedFilename, _blob_ct, _ftype, facility)
 				_facility_log(f'Dwn:{os.path.basename(downloadedFilename)} downloaded successfully')
@@ -1157,6 +1164,8 @@ def GetHistoryTxnFileDownload(xmlBody, transactionID):
 							run_id=_current_run_id,
 							file_name=os.path.basename(downloadedFilename),
 							file_type=_ftype,
+							file_size_bytes=_dl_size,
+							blob_url=_dl_blob_url,
 							**_last_file_meta,
 						)
 					except Exception as _exc:
@@ -1495,8 +1504,14 @@ def mainsub(downloadtype, active, claim_remit):
 		dlfh.write(f"{logline}")
 		return
 
-	if range_end <= range_start:
-		logline = logwriter('w', 'His:1.11b transactionToDate is not after transactionFromDate — nothing to process')
+	if range_end == range_start:
+		# Same-day adhoc: from=26/03/2026 00:00:00 to=26/03/2026 00:00:00
+		# Extend to end-of-day so the full 24h window is searched
+		range_end = range_start + timedelta(hours=24)
+		logline = logwriter('i', f'His:1.11b Same from/to date — extending to end-of-day: {range_end.strftime(SHAFAFIYA_DATE_FMT)}')
+		dlfh.write(f"{logline}")
+	elif range_end < range_start:
+		logline = logwriter('w', 'His:1.11b transactionToDate is before transactionFromDate — nothing to process')
 		dlfh.write(f"{logline}")
 		return
 
@@ -1578,7 +1593,7 @@ def main():
     global dlfh, tempfolder, systemfolder, currentsetup, config, transactionID, facility
     global hrfname, hresponsefname
     global MIN_FREE_DISK_MB
-    global _blob_enabled, _blob_service_client, _blob_ct
+    global _blob_enabled, _blob_service_client, _blob_ct, _storage_url
     global _db_logger, _current_run_id, _interval_id_map, _run_stats, _current_interval_id
     global _facility_log_path, _facility_log_fh, _facility_csv_path, _facility_csv_rows
     # When blob upload is active, files are transient (written then immediately
@@ -1652,7 +1667,7 @@ def main():
         _storage_url = os.environ.get(
             'CLAIMSSYNC_STORAGE_URL',
             'https://stclaimssyncuae.blob.core.windows.net'
-        ).strip()
+        ).strip().rstrip('/')
         print(f"[ClaimSync2] Blob upload ENABLED — account: {_storage_url}")
         logline = logwriter('i', f'Pre:1.5b Blob upload enabled — account={_storage_url}')
         dlfh.write(f"{logline}")
@@ -1876,6 +1891,8 @@ def main():
                         print(f'[ClaimSync2] Uploading {len(_resub_files)} resubmission file(s) to blob...')
                         for _rf in _resub_files:
                             _rf_path = os.path.join(resubmission, _rf)
+                            _resub_size = os.path.getsize(_rf_path) if os.path.isfile(_rf_path) else None
+                            _resub_blob_url = f'{_storage_url}/{_blob_ct}/resubmission/{_rf}' if _storage_url else None
                             _blob_upload_file(_rf_path, _blob_ct, 'resubmission', facility)
                             print(f'  ResUpl:{_rf} uploaded to blob resubmission/')
                             _facility_log(f'ResUpl:{_rf} uploaded to blob resubmission/')
@@ -1888,6 +1905,8 @@ def main():
                                         run_id=_current_run_id,
                                         file_name=_rf,
                                         file_type='resubmission',
+                                        file_size_bytes=_resub_size,
+                                        blob_url=_resub_blob_url,
                                     )
                                 except Exception as _exc:
                                     logline = logwriter('w', f'DB:log_file resubmission failed (non-fatal): {_exc}')
@@ -1931,7 +1950,7 @@ def main():
 
                 # ── P3-T02: close the run row — ALWAYS fires ──────────────
                 if _db_logger and _current_run_id:
-                    _final_status = 'error' if _facility_error else 'success'
+                    _final_status = 'failed' if _facility_error else 'success'
                     try:
                         _db_logger.end_run(
                             run_id=_current_run_id,

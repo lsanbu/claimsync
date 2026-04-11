@@ -24,9 +24,9 @@
 
 | Component | Image | Container App / Job | Notes |
 |---|---|---|---|
-| Engine | `claimsync-engine:3.9` | `job-claimssync-engine` | Resubmission fix verified: 18 resub + 27 total manifest |
+| Engine | `claimsync-engine:3.12` | `job-claimssync-engine` | same-day adhoc fix + end_run status constraint fix |
 | API | `claimsync-api:3.5` | `ca-claimssync-api` | Storage key endpoint + SAS endpoint + service token (365d) |
-| Dashboard | `claimsync-dashboard:2.20` | `ca-claimssync-dashboard` | Reseller portal: run history, Files/Intervals tabs, adhoc run page |
+| Dashboard | `claimsync-dashboard:2.21` | `ca-claimssync-dashboard` | file_type badge uses DB field instead of filename regex |
 
 All three repos synced to GitHub with detailed commit messages.
 
@@ -347,6 +347,11 @@ Schema: `claimssync_schema_v2.sql` + `migration_v3.sql` + auto-migration for fil
 | 26 Mar | Blob container missing for MF5360 | Never created | Created `claimssync-mf5360` |
 | 26 Mar | Interval FROM/TO showing `—` | `from_time`/`to_time` never populated in intervals endpoint | Parsed from request XML blobs in API :2.9 |
 | 26 Mar | Resubmission files not in blob | Blob upload runs before `FindnMoveResubmission()` moves files | Post-move resubmission upload scan in :3.9 |
+| 28 Mar | MF5360 files showing "Other" type in dashboard | `RunFilesTab` used filename regex (`H*`=claims) instead of DB `file_type` field | New `fileTypeBadge()` uses DB field, falls back to filename for old data. Dashboard :2.21 |
+| 28 Mar | File size showing "—" for all files | `file_size_bytes` never passed to `log_file()` in engine | Added `os.path.getsize()` at all 3 `log_file()` call sites. Engine :3.10 |
+| 28 Mar | Blob path empty in CSV/dashboard | `blob_url` never passed to `log_file()` in engine | Construct URL from `CLAIMSSYNC_STORAGE_URL` + container + ftype + filename before upload (captures size before delete). Engine :3.11 |
+| 30 Mar | Same-day adhoc run crashes engine | `from==to` parses to identical timestamps → `range_end <= range_start` early return skips creating `downloadhistfileids.bat` → `hf` step FileNotFoundError | When `from==to`, extend `to` by 24h for full-day search. Engine :3.12 |
+| 30 Mar | Failed runs stuck at "running" in DB | `end_run(status='error')` violates `sync_run_log_status_check` constraint — only allows `success\|partial\|failed` | Changed `'error'` to `'failed'`. Engine :3.12 |
 
 ---
 
