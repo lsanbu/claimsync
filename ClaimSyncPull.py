@@ -2,7 +2,7 @@
 ClaimSyncPull.py
 ================
 Downloads new files from ClaimSync Azure Blob Storage to Saleem's PC.
-Multi-facility support: MF2618, MF5360.
+Multi-facility support: MF2618, MF5360, MF4958.
 
 Purpose:
   - Sync cloud-downloaded files to local PC for validation and processing
@@ -25,7 +25,7 @@ Requirements:
   pip install azure-storage-blob requests
 
 Author  : Kaaryaa Intelligence LLP
-Version : 3.1
+Version : 3.2
 Date    : March 2026
 """
 
@@ -63,6 +63,7 @@ LOCAL_BASE = r"C:\Users\USER\ClaimSync\Reggr"
 FACILITIES = [
     {"code": "MF2618", "container": "claimssync-mf2618", "local": "mf2618"},
     {"code": "MF5360", "container": "claimssync-mf5360", "local": "mf5360"},
+    {"code": "MF4958", "container": "claimssync-mf4958", "local": "mf4958"},
 ]
 
 # Blob prefix → local subfolder mapping per facility
@@ -225,7 +226,7 @@ def pull_facility(client: BlobServiceClient, fac: dict, log, dry_run: bool, date
 
 def main():
     parser = argparse.ArgumentParser(
-        description="ClaimSyncPull v3.1 — Download ClaimSync cloud files to local PC"
+        description="ClaimSyncPull v3.2 — Download ClaimSync cloud files to local PC"
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--date", type=str, default=None, help="DD/MM/YYYY")
@@ -239,7 +240,7 @@ def main():
 
     log = setup_logging()
     log.info("=" * 60)
-    log.info(f"ClaimSyncPull v3.1 | {'DRY RUN' if args.dry_run else 'LIVE RUN'}")
+    log.info(f"ClaimSyncPull v3.2 | {'DRY RUN' if args.dry_run else 'LIVE RUN'}")
     if args.date:
         log.info(f"Date filter: {args.date}")
     log.info("=" * 60)
