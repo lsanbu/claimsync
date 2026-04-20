@@ -223,12 +223,63 @@
 #	            or config load failures, OSError disk-full handler retained
 
 import cryptocode, pyotp, qrcode, base64, shutil, arrow, zipfile
-import sys, configparser, subprocess, os, time, platform, re, errno
+import sys, configparser, subprocess, os, time, platform, re, errno, logging
 from datetime import date, datetime, timedelta
 import glob
 from pathlib import Path
 # v8h Phase 0: httpx SOAP helpers replace curl subprocess
-from httpx_soap import soap_search_transactions, soap_download_transaction
+# v3.13: ShafafiyaAuthError propagated from soap_search_transactions on sr=-1/-2
+from httpx_soap import soap_search_transactions, soap_download_transaction, ShafafiyaAuthError
+
+# ── v3.13: App Insights / Azure Monitor telemetry ────────────────────────────
+# Matches the API's pattern (ClaimSyncAPI/main.py). configure_azure_monitor()
+# auto-instruments stdlib logging and exports log records as App Insights
+# traces. Custom events are emitted via logger.info(event_name, extra=
+# {'custom_dimensions': {...}}) — shows up as traces with customDimensions.
+# Only wired when APPLICATIONINSIGHTS_CONNECTION_STRING env var is present;
+# otherwise _otel_logger stays None and the emit helper is a no-op.
+_otel_logger = None
+if os.environ.get('APPLICATIONINSIGHTS_CONNECTION_STRING'):
+    try:
+        from azure.monitor.opentelemetry import configure_azure_monitor
+        configure_azure_monitor(logger_name='claimsync.engine')
+        logging.basicConfig(
+            level=logging.INFO,
+            format='[ClaimSync-Engine] %(levelname)s %(name)s: %(message)s',
+            force=True,   # override the handler configure_azure_monitor claimed
+        )
+        _otel_logger = logging.getLogger('claimsync.engine')
+        _otel_logger.info('Engine:App Insights wired (configure_azure_monitor)')
+        print('[ClaimSync2] App Insights telemetry: ACTIVE')
+    except Exception as _otel_exc:
+        _otel_logger = None
+        print(f'[ClaimSync2] App Insights init failed (non-fatal): {_otel_exc}')
+else:
+    print('[ClaimSync2] App Insights telemetry: DISABLED (no connection string)')
+
+# v3.18: silence the very chatty Azure SDK HTTP request/response logs.
+# azure.core.pipeline.policies and azure.identity DEBUG/INFO logs include
+# every Bearer token exchange and every blob/KV REST call body, which drowns
+# out engine logs in container stdout AND inflates App Insights ingest cost
+# (the OTel exporter ships every record). WARNING keeps real Azure failures
+# (auth refused, transient 5xx) visible while dropping the noise.
+# App Insights traces emitted via _otel_logger ('claimsync.engine' namespace)
+# are not on the azure.* tree, so they're unaffected.
+logging.getLogger('azure.core').setLevel(logging.WARNING)
+logging.getLogger('azure.identity').setLevel(logging.WARNING)
+
+
+def _emit_event(event_name: str, level: str = 'info', **props):
+    """Emit a structured App Insights event. Safe no-op if OTel not wired."""
+    if _otel_logger is None:
+        return
+    try:
+        getattr(_otel_logger, level)(
+            event_name,
+            extra={'custom_dimensions': props}
+        )
+    except Exception:
+        pass   # telemetry must never break the run
 
 # ── Phase 3: Blob Storage upload ──────────────────────────────────────────────
 # Imported lazily inside _init_blob_client() so the engine still starts cleanly
@@ -303,6 +354,39 @@ def _blob_upload_audit(local_path: str, container_name: str, blob_prefix: str):
         ok = _do_upload(_blob_service_client, container_name, blob_name, local_path)
         if ok:
             print(f'BlobAudit:OK  {container_name}/{blob_name}')
+        else:
+            print(f'BlobAudit:FAIL {container_name}/{blob_name}')
+    except Exception as exc:
+        print(f'BlobAudit:ERR {blob_name}: {exc}')
+
+
+# ── v3.13: Redact SOAP creds before blob upload ──────────────────────────────
+# SearchTransactions request XML embeds cleartext <v2:login>/<v2:pwd> on every
+# interval call. The local /tmp copy is ephemeral, but the blob audit copy
+# persists — so scrub the two fields in-memory before upload. Local file is
+# never modified (the engine still needs the real creds for the actual POST).
+_CREDS_REDACT_LOGIN = re.compile(r'(<v2:login>).*?(</v2:login>)', re.DOTALL)
+_CREDS_REDACT_PWD   = re.compile(r'(<v2:pwd>).*?(</v2:pwd>)',     re.DOTALL)
+
+def _redact_soap_creds(xml_bytes: bytes) -> bytes:
+    text = xml_bytes.decode('utf-8', errors='replace')
+    text = _CREDS_REDACT_LOGIN.sub(r'\1***REDACTED***\2', text)
+    text = _CREDS_REDACT_PWD.sub(r'\1***REDACTED***\2', text)
+    return text.encode('utf-8')
+
+def _blob_upload_audit_redacted(local_path: str, container_name: str, blob_prefix: str):
+    """Like _blob_upload_audit, but redacts <v2:login>/<v2:pwd> values in-memory
+    before upload. Used for SearchTransactions request XMLs."""
+    if not _blob_enabled or _blob_service_client is None:
+        return
+    blob_name = f"{blob_prefix}/{os.path.basename(local_path)}"
+    try:
+        with open(local_path, 'rb') as f:
+            redacted = _redact_soap_creds(f.read())
+        from blob_storage_provider import upload_bytes as _do_upload_bytes
+        ok = _do_upload_bytes(_blob_service_client, container_name, blob_name, redacted)
+        if ok:
+            print(f'BlobAudit:OK  {container_name}/{blob_name} (creds redacted)')
         else:
             print(f'BlobAudit:FAIL {container_name}/{blob_name}')
     except Exception as exc:
@@ -1076,6 +1160,24 @@ def GetHistoryTxnFileDownload(xmlBody, transactionID):
 			dlfh.write(f"{logline}")
 			#print('transactionID - before call DownloadHistoryTxnFile: ', transactionID)
 
+			# ── v3.15: dedup pre-check ────────────────────────────────────────
+			# Skip download + blob upload if this Shafafiya FileID was already
+			# pulled for this facility in any prior run. Shafafiya returns the
+			# same FileID across overlapping 2-hr interval responses; without
+			# this check, every overlap re-downloads + re-uploads + (pre-v3.15)
+			# created a duplicate file_manifest row. Belt-and-braces: log_file
+			# also early-returns on duplicate.
+			# Bypass via CLAIMSSYNC_DEDUP_BYPASS=1 for forced adhoc re-runs.
+			# Fail-open: helper returns False on DB error → file gets downloaded.
+			if _db_logger and _db_logger.file_already_downloaded(facility, FileID):
+				count_skipped += 1
+				logline = logwriter('i', f'HisDnld:dedup FileID {FileID} already in file_manifest — skipping download')
+				dlfh.write(f"{logline}")
+				_facility_log(f'Dedup:{FileID} skipped (already downloaded for {facility})')
+				print(f'  [DEDUP] FileID {FileID} skipped — already in file_manifest')
+				nextFileNameloc = nextFileNameloc + 1
+				continue
+
 			# v8d: Wrap the download call — if a disk-full OSError is re-raised from
 			# DownloadHistoryTxnFile (or from remove_attachments_from_file inside it),
 			# catch it here, log CRITICAL, and break the FileID loop cleanly so the
@@ -1319,7 +1421,8 @@ def build_and_execute_search_request(
 	if result:
 		resp_size = os.path.getsize(resp_fname) if os.path.exists(resp_fname) else 0
 		_facility_log(f'His:Intv[{interval_idx}] httpx SearchTransactions OK | resp: {resp_fname} | {resp_size} bytes')
-	_blob_upload_audit(req_fname, _blob_ct, 'search_history')
+	# v3.13: request XML contains cleartext <v2:login>/<v2:pwd> — redact before upload.
+	_blob_upload_audit_redacted(req_fname, _blob_ct, 'search_history')
 	if os.path.exists(resp_fname):
 		_blob_upload_audit(resp_fname, _blob_ct, 'search_history')
 
@@ -1537,10 +1640,27 @@ def mainsub(downloadtype, active, claim_remit):
 		wstart_str = wstart.strftime(SHAFAFIYA_DATE_FMT)
 		wend_str   = wend.strftime(SHAFAFIYA_DATE_FMT)
 		print(f"  [{facility}][{claim_remit}] Interval {idx+1}/{total_intervals}: {wstart_str} -> {wend_str}")
-		result = build_and_execute_search_request(
-			wstart_str, wend_str, idx, claim_remit,
-			direction, callerLicense, ePartner, transactionID, transactionStatus,
-			transactionFileName, minRecordCount, maxRecordCount)
+		try:
+			result = build_and_execute_search_request(
+				wstart_str, wend_str, idx, claim_remit,
+				direction, callerLicense, ePartner, transactionID, transactionStatus,
+				transactionFileName, minRecordCount, maxRecordCount)
+		except ShafafiyaAuthError as _auth_exc:
+			# v3.13: FATAL — break interval loop, propagate to facility handler
+			# so the run is marked 'auth_failed' (not 'failed', not 'success').
+			logline = logwriter('c', f'His:Intv[{idx}] SHAFAFIYA AUTH FAILURE: {_auth_exc} — aborting remaining intervals for {facility}/{claim_remit}')
+			dlfh.write(f"{logline}")
+			_facility_log(f'His:Intv[{idx}] SHAFAFIYA AUTH FAILURE: {_auth_exc}')
+			print(f'\033[31m  [{facility}][{claim_remit}] AUTH FAILURE at interval {idx} — aborting\033[0m')
+			_emit_event(
+				'AuthFailed', level='critical',
+				facility=facility,
+				claim_remit=claim_remit,
+				sr_code=_auth_exc.sr_code,
+				error=_auth_exc.error_message,
+				interval_index=idx,
+			)
+			raise
 		if result:
 			successful += 1
 			if _run_stats:
@@ -1551,21 +1671,60 @@ def mainsub(downloadtype, active, claim_remit):
 				_run_stats['intervals_skipped'] = _run_stats.get('intervals_skipped', 0) + 1
 			logline = logwriter('w', f'His:Intv[{idx}] Interval FAILED, continuing with next interval')
 			dlfh.write(f"{logline}")
+			_emit_event(
+				'IntervalFailed', level='warning',
+				facility=facility,
+				claim_remit=claim_remit,
+				interval_index=idx,
+				interval_from=wstart_str,
+				interval_to=wend_str,
+			)
 		# ── P3-T02: log_interval ──────────────────────────────────────────
+		# v3.16 fixes the call site that had been silently failing since v3.x:
+		#   - api_result_code: required positional with no default — was missing,
+		#     raising TypeError caught by except → no row inserted.
+		#   - status='completed'/'failed' violated the schema CHECK constraint
+		#     (allowed: 'pending','success','skipped','error') → CheckViolation
+		#     also caught silently. Net effect: sync_run_intervals stayed empty.
+		#   - interval_from/to were strings; method does _parse_dt() which
+		#     accepts both, but datetime is the documented contract.
 		if _db_logger and _current_run_id:
 			try:
 				_int_id = _db_logger.log_interval(
 					run_id=_current_run_id,
 					interval_index=idx,
-					interval_from=wstart_str,
-					interval_to=wend_str,
-					status='completed' if result else 'failed',
+					interval_from=wstart,                     # datetime, not str
+					interval_to=wend,                         # datetime, not str
+					api_result_code='0' if result else 'ERR',
+					status='success' if result else 'error',  # schema-valid values
 					files_in_response=0,
 				)
 				_interval_id_map[idx] = _int_id
 			except Exception as _exc:
 				logline = logwriter('w', f'DB:log_interval failed (non-fatal): {_exc}')
 				dlfh.write(f"{logline}")
+
+		# ── v3.16: incremental progress UPDATE on sync_run_log ────────────
+		# Lets the dashboard's 5s poll show "X / Y intervals" ticking live
+		# instead of staying at 0 / 0 until end_run() fires. Uses cumulative
+		# _run_stats values (not local idx+1 / total_intervals) so the
+		# denominator and numerator both span h-claim AND h-remit phases —
+		# without this the display would reset mid-run when h-remit starts.
+		if _db_logger and _current_run_id and _run_stats:
+			try:
+				_db_logger.update_progress(
+					run_id=_current_run_id,
+					intervals_completed=_run_stats.get('intervals_completed', 0),
+					intervals_total=_run_stats.get('intervals_total', 0),
+					# v3.17: surface the just-completed interval window so the
+					# dashboard can show "Currently: ...". Cleared at end_run.
+					current_interval_from=wstart.strftime('%Y-%m-%d %H:%M'),
+					current_interval_to=wend.strftime('%Y-%m-%d %H:%M'),
+				)
+			except Exception as _exc:
+				logline = logwriter('w', f'DB:update_progress failed (non-fatal): {_exc}')
+				dlfh.write(f"{logline}")
+
 		# sleep(3) retained intentionally — httpx is synchronous/blocking, so this is
 		# NOT a correctness guard against async races.
 		# It is a courtesy rate-limit pause between API calls to the Shafafiya
@@ -1621,16 +1780,23 @@ def main():
         return
 
     # ── Cloud config: DB + Key Vault ───────────────────────────────────────
-    _tenant = os.environ.get('CLAIMSSYNC_TENANT', '').strip()
+    # v3.14: engine runs multi-tenant. Every tenant_facilities row with
+    # status='active' AND credentials_provided=TRUE is processed, regardless
+    # of which tenant owns it. CLAIMSSYNC_TENANT is still read (logged for
+    # traceability) but no longer gates facility selection — the prior rule
+    # "all facilities must be under KAARYAA-T1" no longer applies.
+    _tenant = os.environ.get('CLAIMSSYNC_TENANT', '').strip()   # legacy trace only
     _kv_uri = os.environ.get('CLAIMSSYNC_KV_URI', '').strip()
 
-    print(f"[ClaimSync2] tenant={_tenant or '(not set)'} | kv={_kv_uri or '(not set)'}")
-    logline = logwriter('i', f'Pre:1.3 tenant={_tenant or "(not set)"} kv_uri={_kv_uri or "(not set)"}')
+    print(f"[ClaimSync2] multi-tenant mode | kv={_kv_uri or '(not set)'}"
+          f"{' | legacy CLAIMSSYNC_TENANT=' + _tenant if _tenant else ''}")
+    logline = logwriter('i', f'Pre:1.3 multi-tenant mode kv_uri={_kv_uri or "(not set)"} '
+                             f'legacy_tenant={_tenant or "(not set)"}')
     dlfh.write(f"{logline}")
 
-    if not _tenant or not _kv_uri:
-        print("\033[31m[ClaimSync2] FATAL: CLAIMSSYNC_TENANT or CLAIMSSYNC_KV_URI not set.\033[0m")
-        logline = logwriter('c', 'Crit:1.1 CLAIMSSYNC_TENANT or CLAIMSSYNC_KV_URI env var missing — cannot start')
+    if not _kv_uri:
+        print("\033[31m[ClaimSync2] FATAL: CLAIMSSYNC_KV_URI not set.\033[0m")
+        logline = logwriter('c', 'Crit:1.1 CLAIMSSYNC_KV_URI env var missing — cannot start')
         dlfh.write(f"{logline}")
         dlfh.close()
         return
@@ -1644,10 +1810,13 @@ def main():
         dlfh.write(f"{logline}")
 
         _kv_provider = KeyVaultCredentialProvider(vault_uri=_kv_uri)
-        provider     = DBConfigProvider(
-                           tenant_short_code=_tenant,
-                           credential_provider=_kv_provider,
-                       )
+        # tenant_short_code=None → multi-tenant mode in DBConfigProvider.
+        # If the operator leaves CLAIMSSYNC_TENANT set, it's still ignored
+        # as a filter — pass None explicitly so behaviour is deterministic.
+        provider = DBConfigProvider(
+            tenant_short_code=None,
+            credential_provider=_kv_provider,
+        )
         config = provider.get_main_config()
 
         logline = logwriter('i', 'Pre:1.5 DB+KV config loaded successfully')
@@ -1828,6 +1997,49 @@ def main():
                 _run_to_date   = datetime.now().strftime(SHAFAFIYA_DATE_FMT)
                 _run_from_date = arrow.now().shift(days=-1).date().strftime('%d/%m/%Y') + ' 00:00:00'
 
+            # ── v3.13: Skip scheduled runs if previous real run was auth_failed ──
+            # Adhoc/manual runs bypass this — they are the mechanism by which
+            # the operator confirms fresh credentials work before scheduled
+            # runs resume.
+            if _db_logger and _trigger_type == 'scheduled':
+                try:
+                    _last_status = _db_logger.get_last_real_run_status(facility)
+                    if _last_status == 'auth_failed':
+                        _skip_reason = f'Previous run auth_failed — credentials need updating for {facility}'
+                        print(f'\033[33m[ClaimSync2] Skipping {facility} — previous run auth_failed, credentials need updating\033[0m')
+                        logline = logwriter('w', f'Main:SKIP {_skip_reason}')
+                        dlfh.write(f"{logline}")
+                        _facility_log(f'SKIP: {_skip_reason}')
+                        try:
+                            _skipped_run_id = _db_logger.log_skipped_run(
+                                facility_code=facility,
+                                trigger_type=_trigger_type,
+                                search_from=_run_from_date,
+                                search_to=_run_to_date,
+                                error_message=_skip_reason,
+                            )
+                            if _skipped_run_id:
+                                print(f'[ClaimSync2] DB:log_skipped_run run_id={_skipped_run_id}')
+                        except Exception as _skip_exc:
+                            logline = logwriter('w', f'DB:log_skipped_run failed (non-fatal): {_skip_exc}')
+                            dlfh.write(f"{logline}")
+                        _emit_event(
+                            'RunSkipped', level='warning',
+                            facility=facility,
+                            reason='prev_auth_failed',
+                            trigger_type=_trigger_type,
+                        )
+                        # Close per-facility log opened earlier in this iteration
+                        if _facility_log_fh:
+                            _facility_log_fh.close()
+                            _facility_log_fh = None
+                        if _facility_log_path and os.path.exists(_facility_log_path):
+                            _blob_upload_audit(_facility_log_path, _blob_ct, 'logs')
+                        continue
+                except Exception as _skip_check_exc:
+                    logline = logwriter('w', f'Main:SKIP_CHECK failed (non-fatal): {_skip_check_exc}')
+                    dlfh.write(f"{logline}")
+
             # ── v3.7: start_run BEFORE mainsub — guarantees a DB row ──────
             if _db_logger:
                 try:
@@ -1848,6 +2060,7 @@ def main():
 
             # ── Facility processing with guaranteed end_run ───────────────
             _facility_error = None
+            _auth_failed    = False   # v3.13: set by ShafafiyaAuthError branch
             try:
                 # ── Claims: search → list → download ──────────────────────
                 print(f"[ClaimSync2] facility={facility} setup={currentsetup} (h-claim)")
@@ -1913,6 +2126,13 @@ def main():
                                     dlfh.write(f"{logline}")
                         print(f'[ClaimSync2] Resubmission upload complete: {len(_resub_files)} file(s)')
 
+            except ShafafiyaAuthError as _auth_exc:
+                # v3.13: auth failure at any interval — mark run as 'auth_failed'.
+                _facility_error = str(_auth_exc)
+                _auth_failed    = True
+                logline = logwriter('c', f'Main:FACILITY_AUTH_FAILED facility={facility}: {_auth_exc}')
+                dlfh.write(f"{logline}")
+                print(f'\033[31m[ClaimSync2] Facility {facility} AUTH FAILED: {_auth_exc}\033[0m')
             except Exception as _fac_exc:
                 _facility_error = str(_fac_exc)
                 logline = logwriter('e', f'Main:FACILITY_ERROR facility={facility}: {_fac_exc}')
@@ -1949,8 +2169,15 @@ def main():
                     _blob_upload_audit(_facility_csv_path, _blob_ct, 'logs')
 
                 # ── P3-T02: close the run row — ALWAYS fires ──────────────
+                # v3.13: three-way status based on how the try block exited.
+                if _auth_failed:
+                    _final_status = 'auth_failed'
+                elif _facility_error:
+                    _final_status = 'failed'
+                else:
+                    _final_status = 'success'
+
                 if _db_logger and _current_run_id:
-                    _final_status = 'failed' if _facility_error else 'success'
                     try:
                         _db_logger.end_run(
                             run_id=_current_run_id,
@@ -1970,6 +2197,22 @@ def main():
                     except Exception as _exc:
                         logline = logwriter('w', f'DB:end_run failed (non-fatal): {_exc}')
                         dlfh.write(f"{logline}")
+
+                # ── v3.13: App Insights RunCompleted event ────────────────
+                _emit_event(
+                    'RunCompleted',
+                    level='error' if _final_status in ('failed', 'auth_failed') else 'info',
+                    facility=facility,
+                    status=_final_status,
+                    trigger_type=_trigger_type,
+                    files_found=_run_stats.get('files_found', 0),
+                    files_downloaded=_run_stats.get('files_downloaded', 0),
+                    files_resubmission=_run_stats.get('files_resubmission', 0),
+                    files_remittance=_run_stats.get('files_remittance', 0),
+                    intervals_completed=_run_stats.get('intervals_completed', 0),
+                    intervals_total=_run_stats.get('intervals_total', 0),
+                    error_message=_facility_error or '',
+                )
 
     except OSError as ose:
         if ose.errno == errno.ENOSPC:
@@ -1991,6 +2234,18 @@ def main():
     logline = logwriter('i', 'Main:END BAU download run completed')
     dlfh.write(f"{logline}")
     dlfh.close()
+
+    # v3.13: flush App Insights exporter before the container exits
+    if _otel_logger is not None:
+        try:
+            for _h in list(logging.getLogger('claimsync.engine').handlers):
+                if hasattr(_h, 'flush'):
+                    _h.flush()
+            # BatchLogRecordProcessor exports on a timer — give it a window
+            time.sleep(2)
+        except Exception:
+            pass
+
     print("[ClaimSync2] BAU run complete.")
 
 

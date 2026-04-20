@@ -93,36 +93,72 @@ def trigger_adhoc_run(
         credential = ManagedIdentityCredential(client_id=MANAGED_IDENTITY_CLIENT_ID)
         client = ContainerAppsAPIClient(credential, SUBSCRIPTION_ID)
 
-        # Get current job config to preserve existing env vars and image
+        # ── Per-execution override (NOT persisted on the Job resource) ──────
+        # begin_start(template=...) posts to Microsoft.App/jobs/{name}/start
+        # with a JobExecutionTemplate body. Azure applies the template to the
+        # single JobExecution it creates — the persistent Job.template is
+        # untouched, so these three adhoc env vars never land on the job.
+        #
+        # Azure applies the execution's container `env` as a REPLACEMENT of
+        # the job's env list (not a merge), so we must bundle the inherited
+        # env vars (DB_DSN, KV_URI, BLOB_UPLOAD, APPLICATIONINSIGHTS_*, MI
+        # client_id, etc.) together with the three adhoc overrides.
+        ADHOC_NAMES = {
+            "CLAIMSSYNC_ADHOC_FROM",
+            "CLAIMSSYNC_ADHOC_TO",
+            "CLAIMSSYNC_ADHOC_FACILITY",
+        }
+
         job = client.jobs.get(RESOURCE_GROUP, ENGINE_JOB_NAME)
         current_container = job.template.containers[0]
-        current_env = {e.name: e for e in (current_container.env or [])}
 
-        # Override/add adhoc env vars
-        current_env["CLAIMSSYNC_ADHOC_FROM"] = EnvironmentVar(name="CLAIMSSYNC_ADHOC_FROM", value=from_dt)
-        current_env["CLAIMSSYNC_ADHOC_TO"] = EnvironmentVar(name="CLAIMSSYNC_ADHOC_TO", value=to_dt)
-        current_env["CLAIMSSYNC_ADHOC_FACILITY"] = EnvironmentVar(name="CLAIMSSYNC_ADHOC_FACILITY", value=facility_code)
+        # Rebuild each EnvironmentVar explicitly. The response models from
+        # jobs.get() sometimes carry read-only/extra attributes the request
+        # side silently drops — reconstructing preserves name/value/secret_ref
+        # cleanly so KV-backed secrets (e.g. db-dsn, acs-connection-string)
+        # round-trip through the execution override.
+        inherited_env = [
+            EnvironmentVar(
+                name=ev.name,
+                value=ev.value,
+                secret_ref=ev.secret_ref,
+            )
+            for ev in (current_container.env or [])
+            if ev.name not in ADHOC_NAMES   # drop stale adhoc keys if any
+        ]
+        adhoc_env = [
+            EnvironmentVar(name="CLAIMSSYNC_ADHOC_FROM",     value=from_dt),
+            EnvironmentVar(name="CLAIMSSYNC_ADHOC_TO",       value=to_dt),
+            EnvironmentVar(name="CLAIMSSYNC_ADHOC_FACILITY", value=facility_code),
+        ]
+        merged_env = inherited_env + adhoc_env
 
-        template = JobExecutionTemplate(
+        override_template = JobExecutionTemplate(
             containers=[
                 JobExecutionContainer(
                     name=current_container.name,
                     image=current_container.image,
-                    env=list(current_env.values()),
+                    env=merged_env,
                     resources=current_container.resources,
                 )
             ],
         )
 
-        result = client.jobs.begin_start(
-            resource_group_name=RESOURCE_GROUP,
-            job_name=ENGINE_JOB_NAME,
-            template=template,
+        # Log names only — values may contain secrets
+        log.info(
+            "Adhoc run: facility=%s user=%s per-execution override env keys=%s "
+            "inherited=%d adhoc=%d",
+            facility_code,
+            user.get("email"),
+            [ev.name for ev in adhoc_env],
+            len(inherited_env),
+            len(adhoc_env),
         )
 
-        log.info(
-            "Adhoc run triggered for %s by %s: from=%s to=%s",
-            facility_code, user.get("email"), from_dt, to_dt,
+        client.jobs.begin_start(
+            resource_group_name=RESOURCE_GROUP,
+            job_name=ENGINE_JOB_NAME,
+            template=override_template,
         )
 
         return {
@@ -131,7 +167,12 @@ def trigger_adhoc_run(
             "facility_name": facility["facility_name"],
             "from_datetime": from_dt,
             "to_datetime": to_dt,
-            "message": f"Adhoc run started for {facility_code} ({from_dt} → {to_dt})",
+            "override_vars": sorted(ADHOC_NAMES),
+            "message": (
+                f"Adhoc run started for {facility_code} "
+                f"({from_dt} → {to_dt}) with per-execution env override "
+                f"(job resource unchanged)"
+            ),
         }
 
     except HTTPException:
@@ -159,20 +200,33 @@ def get_facility_runs(
     rows = query(
         f"""
         SELECT
-            run_id::text,
-            started_at,
-            ended_at,
-            status,
-            files_downloaded,
-            search_from_date AS from_date,
-            search_to_date   AS to_date,
-            engine_version,
-            intervals_total,
-            intervals_completed,
-            trigger_type
-        FROM {SCHEMA}.sync_run_log
-        WHERE facility_id = %s
-        ORDER BY started_at DESC
+            r.run_id::text,
+            r.started_at,
+            r.ended_at,
+            r.status,
+            r.files_downloaded,
+            r.search_from_date AS from_date,
+            r.search_to_date   AS to_date,
+            r.engine_version,
+            r.intervals_total,
+            r.intervals_completed,
+            r.trigger_type,
+            -- v2.10: live "currently processing" interval window, written by
+            -- engine update_progress (engine :3.17+). Cleared at end_run, so
+            -- non-NULL only while status='running'.
+            r.current_interval_from,
+            r.current_interval_to,
+            -- v2.9: live counters computed from child tables.
+            -- The engine only writes sync_run_log.files_downloaded /
+            -- intervals_completed inside end_run(), so those columns stay 0
+            -- while a run is in progress. file_manifest and sync_run_intervals
+            -- ARE written incrementally — count them here so the dashboard
+            -- can show progress for status='running' rows.
+            (SELECT COUNT(*) FROM {SCHEMA}.file_manifest       fm WHERE fm.run_id = r.run_id) AS live_files_count,
+            (SELECT COUNT(*) FROM {SCHEMA}.sync_run_intervals  si WHERE si.run_id = r.run_id) AS live_intervals_count
+        FROM {SCHEMA}.sync_run_log r
+        WHERE r.facility_id = %s
+        ORDER BY r.started_at DESC
         LIMIT 10
         """,
         (facility["facility_id"],),

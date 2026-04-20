@@ -76,3 +76,30 @@ def upload_file(
     except Exception as exc:
         logger.error(f"[BlobUpload] Unexpected error for {blob_name}: {exc}")
         return False
+
+
+def upload_bytes(
+    blob_service_client: BlobServiceClient,
+    container_name: str,
+    blob_name: str,
+    data: bytes,
+    overwrite: bool = True,
+) -> bool:
+    """
+    Upload raw bytes to Azure Blob Storage (no local file read).
+    Used when the caller has already transformed the payload in-memory
+    (e.g. credential redaction) and must not write it to disk.
+    """
+    try:
+        blob_client = blob_service_client.get_blob_client(
+            container=container_name,
+            blob=blob_name,
+        )
+        blob_client.upload_blob(data, overwrite=overwrite)
+        return True
+    except AzureError as ae:
+        logger.error(f"[BlobUpload] AzureError for {blob_name}: {ae}")
+        return False
+    except Exception as exc:
+        logger.error(f"[BlobUpload] Unexpected error for {blob_name}: {exc}")
+        return False

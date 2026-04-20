@@ -33,6 +33,48 @@ from .credentials import create_and_send_credential_token
 router = APIRouter()
 log    = logging.getLogger(__name__)
 
+# Module constants for Azure Blob container provisioning during onboarding
+# approval. Same MI client_id and storage account as reseller.py — the engine
+# job, the API, and the dashboard all share id-claimssync-engine.
+STORAGE_URL                = os.getenv("CLAIMSSYNC_STORAGE_URL", "https://stclaimssyncuae.blob.core.windows.net")
+MANAGED_IDENTITY_CLIENT_ID = "8e309ea2-175e-497e-8849-7af81a36c62a"
+
+
+def _ensure_blob_container(facility_code: str) -> dict:
+    """Idempotently create the per-facility blob container at approval time.
+
+    Container name: claimssync-{facility_code.lower()}. Default access tier
+    (private). MI needs Storage Blob Data Contributor on the storage account
+    (already granted for engine writes).
+
+    Returns {created, container, error}. NEVER raises — a blob failure must
+    not roll back the DB-level approval. If it fails, the operator can create
+    the container manually before the first engine run; otherwise the engine
+    will fail loudly on its first blob upload, which is recoverable.
+
+    Background: MF4958 was approved without its container being created. The
+    engine ran nightly for weeks, all blob uploads failing silently inside
+    swallowed-exception handlers. This step closes that gap at the source.
+    """
+    container_name = f"claimssync-{facility_code.lower()}"
+    try:
+        from azure.identity import ManagedIdentityCredential
+        from azure.storage.blob import BlobServiceClient
+        from azure.core.exceptions import ResourceExistsError
+
+        credential = ManagedIdentityCredential(client_id=MANAGED_IDENTITY_CLIENT_ID)
+        blob_service = BlobServiceClient(account_url=STORAGE_URL, credential=credential)
+        try:
+            blob_service.create_container(container_name)
+            log.info(f"Blob container created: {container_name}")
+            return {"created": True, "container": container_name, "error": None}
+        except ResourceExistsError:
+            log.info(f"Blob container already exists (no-op): {container_name}")
+            return {"created": False, "container": container_name, "error": None}
+    except Exception as exc:
+        log.exception(f"Blob container provisioning failed for {facility_code}")
+        return {"created": False, "container": container_name, "error": str(exc)}
+
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
@@ -251,36 +293,51 @@ def approve_onboarding(
         raise HTTPException(status_code=400, detail=f"Cannot approve — current status: {req['status']}")
 
     import json
+
+    # Existing-client reuse: if the wizard submitted client_id (Step 0
+    # "Existing Client" mode), look up that client's tenant_id and reuse
+    # both. Skip the tenant INSERT and client auto-create entirely so we
+    # don't create a duplicate tenant (root cause of MF4958 → TESTING-FACILITY
+    # tenant fork).
+    existing_client = None
+    if req.get("client_id"):
+        existing_client = query_one(
+            f"SELECT client_id, tenant_id FROM {SCHEMA}.clients WHERE client_id = %s::uuid",
+            (req["client_id"],),
+        )
+
     conn = get_db()
     with conn.cursor() as cur:
 
-        # 1. Create tenant
-        short_code = req["tenant_short_code"] or req["tenant_name"].upper().replace(" ","-")[:20]
-        cur.execute(
-            f"""
-            INSERT INTO {SCHEMA}.tenants (
-                reseller_id, name, short_code, legal_name,
-                contact_name, contact_email, contact_phone,
-                country, emirate, status
-            ) VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, 'UAE', %s, 'active')
-            ON CONFLICT (short_code) DO UPDATE SET name = EXCLUDED.name
-            RETURNING tenant_id
-            """,
-            (
-                req["reseller_id"], req["tenant_name"], short_code, req["tenant_name"],
-                req["contact_name"], req["contact_email"], req["contact_phone"],
-                req["tenant_emirate"] or "Abu Dhabi",
-            )
-        )
-        tenant_id = cur.fetchone()[0]
-
-        # 1b. Create or resolve client
-        client_id = req.get("client_id")
-        if client_id:
-            # Case B: adding facility to existing client
-            pass
+        if existing_client:
+            # Case B: existing client selected — reuse its tenant + client
+            tenant_id = existing_client["tenant_id"]
+            client_id = existing_client["client_id"]
+            # Existing tenant's contact fields are intentionally left untouched:
+            # the wizard hides the contact form in existing-client mode, so the
+            # submitted values would be empty strings and would corrupt the
+            # tenant record.
         else:
-            # Case A: auto-create client from onboarding request
+            # Case A: new client — create tenant + auto-create client (legacy path)
+            short_code = req["tenant_short_code"] or req["tenant_name"].upper().replace(" ","-")[:20]
+            cur.execute(
+                f"""
+                INSERT INTO {SCHEMA}.tenants (
+                    reseller_id, name, short_code, legal_name,
+                    contact_name, contact_email, contact_phone,
+                    country, emirate, status
+                ) VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, 'UAE', %s, 'active')
+                ON CONFLICT (short_code) DO UPDATE SET name = EXCLUDED.name
+                RETURNING tenant_id
+                """,
+                (
+                    req["reseller_id"], req["tenant_name"], short_code, req["tenant_name"],
+                    req["contact_name"], req["contact_email"], req["contact_phone"],
+                    req["tenant_emirate"] or "Abu Dhabi",
+                )
+            )
+            tenant_id = cur.fetchone()[0]
+
             client_code = short_code
             cur.execute(
                 f"""
@@ -402,6 +459,17 @@ def approve_onboarding(
             )
         )
 
+    # 4b. Provision Azure Blob container per facility (idempotent).
+    # Done OUTSIDE the DB cursor block so the approval transaction isn't held
+    # open during Azure Blob API calls (each create_container is a network
+    # round-trip). Container creation NEVER rolls back the approval — see
+    # _ensure_blob_container docstring for the MF4958 background.
+    blob_container_results = []
+    for fac in facilities:
+        fc = fac.get("facility_code", "").upper()
+        if fc:
+            blob_container_results.append(_ensure_blob_container(fc))
+
     # 5. Generate credential token + send email for the first facility
     credential_result = None
     if facilities:
@@ -424,9 +492,10 @@ def approve_onboarding(
 
     log.info(f"Onboarding approved: {req['tenant_name']} by {user.get('email')}")
     result = {
-        "status":    "approved",
-        "tenant_id": str(tenant_id),
-        "message":   f"{req['tenant_name']} approved. {len(facilities)} facility/ies provisioned (active)."
+        "status":          "approved",
+        "tenant_id":       str(tenant_id),
+        "blob_containers": blob_container_results,
+        "message":         f"{req['tenant_name']} approved. {len(facilities)} facility/ies provisioned (active)."
     }
     if credential_result:
         result["credential_url"] = credential_result["credential_url"]

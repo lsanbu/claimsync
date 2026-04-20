@@ -17,11 +17,25 @@ export async function apiFetch<T>(path: string, params?: Record<string, string |
 
 // ── Typed helpers ──────────────────────────────────────────────────────────────
 
+// Run status vocabulary (engine :3.13+):
+//   'running'              — in-flight
+//   'success' | 'partial'  — normal completion
+//   'failed'               — non-auth fatal error
+//   'auth_failed'          — Shafafiya rejected login (sr_code -1/-2)
+//   'skipped_auth_failed'  — scheduled run skipped because prev run auth_failed
+export type RunStatus =
+  | 'running'
+  | 'success'
+  | 'failed'
+  | 'partial'
+  | 'auth_failed'
+  | 'skipped_auth_failed'
+
 export interface RunSummary {
   run_id: string
   facility_id: string
   trigger_type: string
-  status: 'running' | 'success' | 'failed' | 'partial'
+  status: RunStatus
   started_at: string
   ended_at: string | null
   duration_seconds: number | null
@@ -104,10 +118,28 @@ export function fmtDate(iso: string | null): string {
 
 export function statusColor(status: string) {
   switch (status) {
-    case 'success': return 'text-emerald-700 bg-emerald-50 border-emerald-200'
-    case 'failed':  return 'text-red-700 bg-red-50 border-red-200'
-    case 'running': return 'text-blue-700 bg-blue-50 border-blue-200'
-    case 'partial': return 'text-amber-700 bg-amber-50 border-amber-200'
-    default:        return 'text-gray-600 bg-gray-50 border-gray-200'
+    case 'success':              return 'text-emerald-700 bg-emerald-50 border-emerald-200'
+    case 'failed':               return 'text-red-700 bg-red-50 border-red-200'
+    case 'running':              return 'text-blue-700 bg-blue-50 border-blue-200'
+    case 'partial':              return 'text-amber-700 bg-amber-50 border-amber-200'
+    case 'auth_failed':          return 'text-red-700 bg-red-100 border-red-300'
+    case 'skipped_auth_failed':  return 'text-amber-800 bg-amber-100 border-amber-300'
+    default:                     return 'text-gray-600 bg-gray-50 border-gray-200'
   }
+}
+
+// Human-friendly labels for statuses that need more than the raw token.
+// Used wherever run status is surfaced to end users.
+export function statusLabel(status: string): string {
+  switch (status) {
+    case 'auth_failed':          return 'Auth Failed'
+    case 'skipped_auth_failed':  return 'Skipped — Fix Credentials'
+    default:                     return status
+  }
+}
+
+// True when the facility's latest run indicates a credential problem that
+// is blocking downloads. Drives the red warning banner on facility pages.
+export function isAuthBlocked(status: string | null | undefined): boolean {
+  return status === 'auth_failed' || status === 'skipped_auth_failed'
 }

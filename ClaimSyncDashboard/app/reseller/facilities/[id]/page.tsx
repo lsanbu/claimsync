@@ -11,6 +11,8 @@ import {
 import RunFilesTab from '@/components/runs/RunFilesTab'
 import RunIntervalsTab from '@/components/runs/RunIntervalsTab'
 import { FileRecord, IntervalRecord } from '@/components/runs/types'
+import CredentialAlertBanner from '@/components/CredentialAlertBanner'
+import { statusLabel } from '@/lib/api'
 
 interface RunRecord {
   run_id:               string
@@ -40,16 +42,21 @@ interface FacilityDetail {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    success:  'bg-emerald-100 text-emerald-700',
-    failed:   'bg-red-100 text-red-700',
-    running:  'bg-blue-100 text-blue-700',
-    partial:  'bg-yellow-100 text-yellow-700',
-    active:   'bg-emerald-100 text-emerald-700',
-    inactive: 'bg-gray-100 text-gray-500',
+    success:              'bg-emerald-100 text-emerald-700',
+    failed:               'bg-red-100 text-red-700',
+    running:              'bg-blue-100 text-blue-700',
+    partial:              'bg-yellow-100 text-yellow-700',
+    auth_failed:          'bg-red-100 text-red-700',
+    skipped_auth_failed:  'bg-amber-100 text-amber-800',
+    active:               'bg-emerald-100 text-emerald-700',
+    inactive:             'bg-gray-100 text-gray-500',
   }
+  // For the two v3.13 statuses, bypass `capitalize` so the label stays readable
+  // ("Auth Failed" / "Skipped — Fix Credentials"); others keep the prior look.
+  const useLabel = status === 'auth_failed' || status === 'skipped_auth_failed'
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${map[status] || 'bg-gray-100 text-gray-600'}`}>
-      {status}
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${useLabel ? '' : 'capitalize'} ${map[status] || 'bg-gray-100 text-gray-600'}`}>
+      {useLabel ? statusLabel(status) : status}
     </span>
   )
 }
@@ -259,6 +266,9 @@ export default function ResellerFacilityDetailPage() {
 
         {facility && (
           <>
+            {/* v3.13: Credential-error banner when latest run is auth-blocked */}
+            <CredentialAlertBanner status={lastRun?.status ?? null} />
+
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">

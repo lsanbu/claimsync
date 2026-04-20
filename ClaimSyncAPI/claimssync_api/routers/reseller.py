@@ -50,13 +50,28 @@ ENGINE_JOB_NAME = "job-claimssync-engine"
 # ── Reseller facility access guard ──────────────────────────────────────────
 
 def _get_reseller_facility(facility_code: str, reseller_id: str) -> dict:
-    """Look up facility by code, ensure it belongs to this reseller via clients table."""
+    """Look up facility by code, ensure it belongs to this reseller.
+
+    v2.8 scope: facility is accessible iff the reseller has an approved
+    onboarding_request for the facility's tenant. The legacy v2.7 OR
+    fallback on tenants.reseller_id was removed once MF2618/MF5360 were
+    backfilled with onboarding_requests rows.
+    """
+    if not reseller_id:
+        # Shouldn't happen — require_reseller enforces auth — but fail closed.
+        raise HTTPException(status_code=403, detail="Reseller ID required")
     row = query_one(
         f"""
         SELECT f.facility_id, f.facility_code, f.facility_name, f.status
         FROM {SCHEMA}.tenant_facilities f
-        JOIN {SCHEMA}.clients cl ON f.client_id = cl.client_id
-        WHERE f.facility_code = %s AND cl.reseller_id = %s::uuid
+        WHERE f.facility_code = %s
+          AND EXISTS (
+              SELECT 1
+                FROM {SCHEMA}.onboarding_requests orq
+               WHERE orq.tenant_id   = f.tenant_id
+                 AND orq.reseller_id = %s::uuid
+                 AND orq.status      = 'approved'
+          )
         """,
         (facility_code.upper(), reseller_id),
     )
@@ -300,7 +315,28 @@ def reseller_dashboard(user: dict = Depends(require_reseller)):
 
 @router.get("/facilities", summary="All facilities under reseller")
 def list_reseller_facilities(user: dict = Depends(require_reseller)):
+    # v2.7 scope fix: a reseller sees ONLY facilities whose tenant was created
+    # from an approved onboarding_request submitted by this reseller_id.
+    #
+    # Why not tenants.reseller_id (prior behaviour):
+    #   tenants.reseller_id is mutable — rewritten by the admin reassign-tenant
+    #   endpoint and by direct DB edits. Using it as the scope gate let a
+    #   reseller see facilities they had no role in onboarding if a tenant was
+    #   ever reassigned to them, and hid facilities they DID onboard if a
+    #   tenant was reassigned away.
+    #
+    # The onboarding_requests row with status='approved' is the immutable
+    # record of who brought a tenant (and therefore its facilities) onto the
+    # platform. tenant_facilities has no direct reseller FK, so the trace goes
+    # reseller → onboarding_requests → tenant_id → tenant_facilities.
+    #
+    # EXISTS is correct here (not JOIN): a single tenant may have multiple
+    # approved onboarding_requests from the same reseller (re-onboarding,
+    # migration) — a JOIN would duplicate the facility row.
     reseller_id = user.get("reseller_id")
+    if not reseller_id:
+        # Shouldn't happen — require_reseller enforces auth — but fail closed.
+        return []
 
     rows = query(
         f"""
@@ -336,10 +372,16 @@ def list_reseller_facilities(user: dict = Depends(require_reseller)):
             WHERE facility_id = f.facility_id
             ORDER BY started_at DESC LIMIT 1
         ) lr ON TRUE
-        { "WHERE t.reseller_id = %s::uuid" if reseller_id else "" }
+        WHERE EXISTS (
+            SELECT 1
+              FROM {SCHEMA}.onboarding_requests orq
+             WHERE orq.tenant_id   = f.tenant_id
+               AND orq.reseller_id = %s::uuid
+               AND orq.status      = 'approved'
+        )
         ORDER BY cl.client_name NULLS LAST, f.facility_code
         """,
-        (reseller_id,) if reseller_id else ()
+        (reseller_id,)
     )
     return rows
 
@@ -351,7 +393,11 @@ def get_reseller_facility(
     facility_id: str = Path(...),
     user: dict = Depends(require_reseller)
 ):
+    # v2.7 scope fix: gate via approved onboarding_request, not tenants.reseller_id.
+    # Same rationale as list_reseller_facilities — see comment there.
     reseller_id = user.get("reseller_id")
+    if not reseller_id:
+        raise HTTPException(status_code=403, detail="Reseller ID required")
 
     row = query_one(
         f"""
@@ -367,9 +413,15 @@ def get_reseller_facility(
         FROM {SCHEMA}.tenant_facilities f
         JOIN {SCHEMA}.tenants t ON f.tenant_id = t.tenant_id
         WHERE f.facility_id = %s::uuid
-        { "AND t.reseller_id = %s::uuid" if reseller_id else "" }
+          AND EXISTS (
+              SELECT 1
+                FROM {SCHEMA}.onboarding_requests orq
+               WHERE orq.tenant_id   = f.tenant_id
+                 AND orq.reseller_id = %s::uuid
+                 AND orq.status      = 'approved'
+          )
         """,
-        (facility_id, reseller_id) if reseller_id else (facility_id,)
+        (facility_id, reseller_id)
     )
 
     if not row:
@@ -596,12 +648,19 @@ def reseller_facility_runs(
 
     rows = query(
         f"""
-        SELECT run_id::text, started_at, ended_at, status, files_downloaded,
-               search_from_date AS from_date, search_to_date AS to_date,
-               engine_version, intervals_total, intervals_completed, trigger_type
-        FROM {SCHEMA}.sync_run_log
-        WHERE facility_id = %s
-        ORDER BY started_at DESC LIMIT 10
+        SELECT r.run_id::text, r.started_at, r.ended_at, r.status,
+               r.files_downloaded,
+               r.search_from_date AS from_date, r.search_to_date AS to_date,
+               r.engine_version, r.intervals_total, r.intervals_completed, r.trigger_type,
+               -- v2.10: currently-processing interval window (engine :3.17+).
+               r.current_interval_from, r.current_interval_to,
+               -- v2.9: live counters from child tables (engine doesn't update
+               -- sync_run_log mid-run; file_manifest + sync_run_intervals do tick).
+               (SELECT COUNT(*) FROM {SCHEMA}.file_manifest      fm WHERE fm.run_id = r.run_id) AS live_files_count,
+               (SELECT COUNT(*) FROM {SCHEMA}.sync_run_intervals si WHERE si.run_id = r.run_id) AS live_intervals_count
+        FROM {SCHEMA}.sync_run_log r
+        WHERE r.facility_id = %s
+        ORDER BY r.started_at DESC LIMIT 10
         """,
         (facility["facility_id"],),
     )

@@ -70,5 +70,12 @@ azure-storage-blob==12.24.0
 # Uvicorn — ASGI server for FastAPI
 # uvicorn[standard]==0.34.0
 
-# Azure Monitor OpenTelemetry — structured telemetry from FastAPI
-# azure-monitor-opentelemetry==1.6.4
+
+# -----------------------------------------------------------------------------
+# 5. ENGINE TELEMETRY — Azure Monitor / App Insights (v3.13)
+# -----------------------------------------------------------------------------
+# configure_azure_monitor() auto-instruments stdlib logging + exports custom
+# events (RunCompleted, AuthFailed, IntervalFailed) via logger.info(..., extra=
+# {'custom_dimensions': {...}}). Matches the API's telemetry pattern.
+# Activated only when APPLICATIONINSIGHTS_CONNECTION_STRING env var is set.
+azure-monitor-opentelemetry==1.6.4

@@ -134,13 +134,18 @@ class DBConfigProvider(ConfigProvider):
 
     def __init__(
         self,
-        tenant_short_code: str,
+        tenant_short_code: Optional[str] = None,
         credential_provider: Optional[CredentialProvider] = None,
         dsn: Optional[str] = None,
     ) -> None:
         """
         Args:
-            tenant_short_code:   e.g. 'KAARYAA-T1' — identifies tenant in DB
+            tenant_short_code:   e.g. 'KAARYAA-T1' — scopes the returned config
+                                 to facilities owned by that tenant. Pass
+                                 None (v3.14 default) to run multi-tenant:
+                                 every facility with status='active' AND
+                                 credentials_provided=TRUE is returned
+                                 regardless of tenant.
             credential_provider: KeyVaultCredentialProvider instance.
                                  If None, credentials are returned as empty
                                  strings (useful for config-only unit tests).
@@ -158,23 +163,41 @@ class DBConfigProvider(ConfigProvider):
 
     def get_main_config(self) -> ClaimSyncConfig:
         """
-        Connect to DB, read tenant + facility rows, build and return
-        ClaimSyncConfig compatible with engine config['section']['key'] access.
+        Connect to DB, read facility rows, build and return ClaimSyncConfig
+        compatible with engine config['section']['key'] access.
+
+        v3.14: when tenant_short_code is None, facilities from ALL tenants
+        are loaded (filtered by status='active' AND credentials_provided=TRUE).
+        When tenant_short_code is set, the legacy single-tenant scope applies.
         """
-        logger.info(f"DBConfigProvider: loading config for tenant '{self.tenant_short_code}'")
+        if self.tenant_short_code:
+            logger.info(f"DBConfigProvider: loading config for tenant '{self.tenant_short_code}'")
+        else:
+            logger.info("DBConfigProvider: loading config MULTI-TENANT (all active+credentialed facilities)")
 
         conn = self._get_connection()
         try:
-            tenant = self._fetch_tenant(conn)
-            facilities = self._fetch_facilities(conn, tenant["tenant_id"])
-            subscription = self._fetch_subscription_expiry(conn, tenant["tenant_id"])
+            if self.tenant_short_code:
+                tenant = self._fetch_tenant(conn)
+                facilities = self._fetch_facilities(conn, tenant["tenant_id"])
+                subscription = self._fetch_subscription_expiry(conn, tenant["tenant_id"])
+                tenant_status = tenant["status"]
+            else:
+                tenant = None
+                facilities = self._fetch_facilities(conn, tenant_id=None)
+                subscription = self._fetch_subscription_expiry(conn, tenant_id=None)
+                # Multi-tenant: per-facility tenant status is enforced by the
+                # WHERE clause in _fetch_facilities (t.status != 'cancelled');
+                # the legacy shafaapi-main.active flag is unused by main().
+                tenant_status = "active"
         finally:
             conn.close()
 
         if not facilities:
             raise RuntimeError(
-                f"DBConfigProvider: no active facilities found for tenant "
-                f"'{self.tenant_short_code}'"
+                "DBConfigProvider: no active+credentialed facilities found "
+                + (f"for tenant '{self.tenant_short_code}'"
+                   if self.tenant_short_code else "across any tenant")
             )
 
         config = ClaimSyncConfig()
@@ -184,7 +207,7 @@ class DBConfigProvider(ConfigProvider):
         first_facility = facilities[0]
 
         config.set_section("shafaapi-main", {
-            "active":       "y" if tenant["status"] == "active" else "n",
+            "active":       "y" if tenant_status == "active" else "n",
             "validuntil":   subscription or "99991231",  # never expires if no sub row
             "noofsetup":    str(len(facilities)),
             "systemfolder": first_facility["local_base_path"] or temp_dir,
@@ -243,9 +266,12 @@ class DBConfigProvider(ConfigProvider):
                 "maxRecordCount":      "100000",
             })
 
+            # Per-facility tenant comes from the row join (multi-tenant) or
+            # the constructor arg (legacy single-tenant mode).
+            _fac_tenant = fac.get("tenant_short_code") or self.tenant_short_code or "(unknown)"
             logger.info(
                 f"DBConfigProvider: loaded facility [{idx}] "
-                f"{fac['facility_code']} (tenant={self.tenant_short_code})"
+                f"{fac['facility_code']} (tenant={_fac_tenant})"
             )
 
         return config
@@ -335,67 +361,95 @@ class DBConfigProvider(ConfigProvider):
         )
         return dict(row)
 
-    def _fetch_facilities(self, conn, tenant_id: str) -> list[dict]:
+    def _fetch_facilities(self, conn, tenant_id: Optional[str] = None) -> list[dict]:
         """
-        Fetch all active facilities for this tenant, ordered by facility_code.
-        Joins service_providers to get API endpoint details for future use.
+        Fetch facilities eligible for the engine run, ordered by facility_code.
+
+        v3.14: selection criteria are tenant-agnostic.
+          tf.status              = 'active'
+          tf.credentials_provided = TRUE
+          sp.is_active           = TRUE
+          t.status              != 'cancelled'
+
+        When tenant_id is provided, an extra `tf.tenant_id = %s` clause
+        limits the result to that tenant (legacy single-tenant mode).
+        When tenant_id is None, facilities across ALL tenants are returned.
+
+        tenants row is joined so per-facility logs can show the owning tenant.
         """
+        sql = """
+            SELECT
+                tf.facility_id,
+                tf.facility_code,
+                tf.facility_name,
+                tf.tenant_id,
+                t.short_code       AS tenant_short_code,
+                t.name             AS tenant_name,
+                tf.local_base_path,
+                tf.claims_subfolder,
+                tf.resubmission_subfolder,
+                tf.remittance_subfolder,
+                tf.blob_container,
+                tf.kv_secret_prefix,
+                tf.lookback_days,
+                tf.interval_hours,
+                tf.api_sleep_seconds,
+                tf.min_free_disk_mb,
+                sp.code            AS provider_code,
+                sp.api_base_url    AS provider_url,
+                sp.timeout_connect_s,
+                sp.timeout_read_s,
+                sp.max_files_per_call
+            FROM   claimssync.tenant_facilities tf
+            JOIN   claimssync.tenants           t  ON t.tenant_id    = tf.tenant_id
+            JOIN   claimssync.service_providers sp ON sp.provider_id = tf.service_provider_id
+            WHERE  tf.status               = 'active'
+              AND  tf.credentials_provided = TRUE
+              AND  sp.is_active            = TRUE
+              AND  t.status               != 'cancelled'
+        """
+        params: tuple
+        if tenant_id:
+            sql += "\n              AND  tf.tenant_id = %s"
+            params = (str(tenant_id),)
+        else:
+            params = ()
+        sql += "\n            ORDER BY tf.facility_code"
+
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT
-                    tf.facility_id,
-                    tf.facility_code,
-                    tf.facility_name,
-                    tf.local_base_path,
-                    tf.claims_subfolder,
-                    tf.resubmission_subfolder,
-                    tf.remittance_subfolder,
-                    tf.blob_container,
-                    tf.kv_secret_prefix,
-                    tf.lookback_days,
-                    tf.interval_hours,
-                    tf.api_sleep_seconds,
-                    tf.min_free_disk_mb,
-                    sp.code            AS provider_code,
-                    sp.api_base_url    AS provider_url,
-                    sp.timeout_connect_s,
-                    sp.timeout_read_s,
-                    sp.max_files_per_call
-                FROM   claimssync.tenant_facilities tf
-                JOIN   claimssync.service_providers sp
-                       ON sp.provider_id = tf.service_provider_id
-                WHERE  tf.tenant_id = %s
-                  AND  tf.status    = 'active'
-                  AND  sp.is_active = TRUE
-                ORDER BY tf.facility_code
-                """,
-                (str(tenant_id),),
-            )
+            cur.execute(sql, params)
             rows = cur.fetchall()
 
         return [dict(r) for r in rows]
 
     def _fetch_subscription_expiry(
-        self, conn, tenant_id: str
+        self, conn, tenant_id: Optional[str] = None
     ) -> Optional[str]:
         """
-        Return the latest valid_until date across all active facilities
-        for this tenant, formatted as YYYYMMDD (matching legacy INI format).
+        Return the latest valid_until date across active+trial subscriptions.
+
+        Tenant-scoped when tenant_id is provided, platform-wide when None.
+        Formatted as YYYYMMDD to match the legacy INI contract. Used only
+        to populate shafaapi-main.validuntil, which current main() does not
+        read — kept for drop-in compatibility with pre-Phase-2 engine code.
         Returns None if no subscription rows exist.
         """
+        sql = """
+            SELECT MAX(fs.valid_until)
+            FROM   claimssync.facility_subscriptions fs
+            JOIN   claimssync.tenant_facilities tf
+                   ON tf.facility_id = fs.facility_id
+            WHERE  fs.status IN ('trial', 'active')
+        """
+        params: tuple
+        if tenant_id:
+            sql += "\n              AND tf.tenant_id = %s"
+            params = (str(tenant_id),)
+        else:
+            params = ()
+
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT MAX(fs.valid_until)
-                FROM   claimssync.facility_subscriptions fs
-                JOIN   claimssync.tenant_facilities tf
-                       ON tf.facility_id = fs.facility_id
-                WHERE  tf.tenant_id = %s
-                  AND  fs.status IN ('trial', 'active')
-                """,
-                (str(tenant_id),),
-            )
+            cur.execute(sql, params)
             row = cur.fetchone()
 
         if row and row[0]:

@@ -1,19 +1,21 @@
 'use client'
 import { useState, useCallback } from 'react'
-import { RunSummary, FileRecord, apiFetch, fmtDate, fmtDuration, statusColor, parsePayer } from '@/lib/api'
+import { RunSummary, FileRecord, apiFetch, fmtDate, fmtDuration, statusColor, statusLabel, parsePayer } from '@/lib/api'
 import {
   ChevronDown, ChevronRight, ServerCrash, CheckCircle2,
-  Loader2, AlertTriangle, FileText, RefreshCw
+  Loader2, AlertTriangle, FileText, RefreshCw, KeyRound
 } from 'lucide-react'
 
 interface Props { runs: RunSummary[] }
 
 function StatusIcon({ status }: { status: string }) {
   switch (status) {
-    case 'success': return <CheckCircle2  className="w-4 h-4 text-emerald-500" />
-    case 'failed':  return <ServerCrash   className="w-4 h-4 text-red-500" />
-    case 'running': return <Loader2       className="w-4 h-4 text-blue-500 animate-spin" />
-    default:        return <AlertTriangle className="w-4 h-4 text-amber-500" />
+    case 'success':              return <CheckCircle2  className="w-4 h-4 text-emerald-500" />
+    case 'failed':               return <ServerCrash   className="w-4 h-4 text-red-500" />
+    case 'running':              return <Loader2       className="w-4 h-4 text-blue-500 animate-spin" />
+    case 'auth_failed':          return <KeyRound      className="w-4 h-4 text-red-600" />
+    case 'skipped_auth_failed':  return <KeyRound      className="w-4 h-4 text-amber-600" />
+    default:                     return <AlertTriangle className="w-4 h-4 text-amber-500" />
   }
 }
 
@@ -168,7 +170,7 @@ export default function RunTimeline({ runs }: Props) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${statusColor(run.status)}`}>
-                    {run.status}
+                    {statusLabel(run.status)}
                   </span>
                   <span className="text-xs text-gray-500">{fmtDate(run.started_at)}</span>
                   <span className="text-xs text-gray-400 hidden sm:inline">· {run.trigger_type}</span>

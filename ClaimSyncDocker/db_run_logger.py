@@ -51,7 +51,20 @@ logger = logging.getLogger(__name__)
 SCHEMA = 'claimssync'
 
 # Engine version tag written to sync_run_log.engine_version
-ENGINE_VERSION = '3.11'
+ENGINE_VERSION = '3.18'
+
+# Status values the schema's sync_run_log_status_check constraint permits.
+# Must stay in sync with the DB migration applied alongside engine :3.13.
+VALID_END_STATUSES = ('success', 'partial', 'failed', 'auth_failed', 'skipped_auth_failed')
+
+# v3.15: dedup bypass switch. Set CLAIMSSYNC_DEDUP_BYPASS=1 in the Container
+# App Job env to force re-download + re-INSERT even when a file already exists
+# in file_manifest for this facility. Used for adhoc re-runs of a date range
+# whose original pull was corrupted (bad credentials, partial blob upload, etc).
+# Read once at import — env vars are static for the lifetime of a job execution.
+DEDUP_BYPASS = os.environ.get('CLAIMSSYNC_DEDUP_BYPASS', '0').strip() == '1'
+if DEDUP_BYPASS:
+    logger.warning('DBRunLogger: CLAIMSSYNC_DEDUP_BYPASS=1 — file_manifest dedup DISABLED for this run')
 
 # Shafafiya API returns dates as DD/MM/YYYY HH:MM:SS or DD/MM/YYYY.
 # PostgreSQL expects ISO YYYY-MM-DD [HH:MM:SS]. This helper converts either.
@@ -264,10 +277,106 @@ class DBRunLogger:
             logger.warning(f'DBRunLogger.start_run failed for {facility_code}: {exc}')
             return None
 
+    def update_progress(
+        self,
+        run_id: str,
+        intervals_completed: int,
+        intervals_total: int,
+        current_interval_from: Optional[str] = None,
+        current_interval_to: Optional[str] = None,
+    ) -> None:
+        """v3.16: incremental progress UPDATE called after each interval finishes.
+        v3.17: adds current_interval_from / current_interval_to so the dashboard
+               can show "Currently: 12 Apr 2026 22:00 → 24:00". Caller formats
+               the strings as 'YYYY-MM-DD HH:MM'. Columns added by
+               migration_v5_run_progress.sql — must be applied before deploy.
+
+        Writes counters together — intervals_total may not have been known at
+        start_run() time (computing it requires replicating mainsub's date
+        parsing + 2-hr split logic, including the v3.12 same-day adhoc 24-hr
+        extension), so it's set on the first update_progress call instead. The
+        dashboard polls every 5s, so the denominator becomes visible within one
+        poll of the first interval finishing.
+
+        Both counter values are CUMULATIVE across phases — caller passes the
+        running totals from _run_stats so the display ticks smoothly across the
+        h-claim → h-remit phase boundary instead of resetting mid-run.
+
+        Non-fatal: failures rolled back + logged + swallowed (must never abort
+        a sync run for a progress-reporting hiccup).
+        """
+        if not run_id:
+            return
+        try:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    UPDATE {SCHEMA}.sync_run_log SET
+                        intervals_completed   = %s,
+                        intervals_total       = %s,
+                        current_interval_from = %s,
+                        current_interval_to   = %s
+                    WHERE run_id = %s
+                    """,
+                    (
+                        intervals_completed, intervals_total,
+                        current_interval_from, current_interval_to,
+                        str(run_id),
+                    ),
+                )
+                self._conn.commit()
+        except Exception as exc:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+            logger.warning(
+                f'DBRunLogger.update_progress failed for run_id={run_id}: {exc}'
+            )
+
+    def file_already_downloaded(self, facility_code: str, shafafiya_txn_id: str) -> bool:
+        """v3.15: engine-level dedup pre-check.
+
+        Returns True iff a file_manifest row already exists for this
+        (facility_id, shafafiya_txn_id) — i.e. this Shafafiya FileID was
+        pulled in any prior run for this facility.
+
+        Called from the FileID loop in ClaimSync2.mainsub() BEFORE
+        DownloadTransactionFile, so we skip both the Shafafiya API call
+        and the blob upload for files we already have.
+
+        Fail-open: if the SELECT errors out, returns False so the file
+        gets downloaded (data completeness > perfect dedup).
+        Bypass: returns False unconditionally if CLAIMSSYNC_DEDUP_BYPASS=1.
+        """
+        if DEDUP_BYPASS:
+            return False
+        if not facility_code or not shafafiya_txn_id:
+            return False
+        facility_id = self.get_facility_id(facility_code)
+        if not facility_id:
+            return False
+        try:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT 1 FROM {SCHEMA}.file_manifest "
+                    f"WHERE facility_id = %s AND shafafiya_txn_id = %s LIMIT 1",
+                    (facility_id, shafafiya_txn_id),
+                )
+                return cur.fetchone() is not None
+        except Exception as exc:
+            logger.warning(
+                f'DBRunLogger.file_already_downloaded check failed '
+                f'(fail-open, will re-download): {exc}'
+            )
+            return False
+
     def end_run(
         self,
         run_id: str,
-        status: str,                          # 'success' | 'partial' | 'failed'
+        status: str,                          # see VALID_END_STATUSES
         intervals_total: int = 0,
         intervals_completed: int = 0,
         intervals_skipped: int = 0,
@@ -283,7 +392,12 @@ class DBRunLogger:
 
         Called once per facility at the end of the facility loop iteration
         in main(), after all 6 mainsub() calls complete.
-        status should be 'success', 'partial', or 'failed'.
+        status must be one of VALID_END_STATUSES:
+          'success'              — normal completion
+          'partial'              — some intervals failed
+          'failed'               — non-auth fatal error
+          'auth_failed'          — Shafafiya returned sr_code -1/-2 (v3.13)
+          'skipped_auth_failed'  — precondition skip (written via log_skipped_run)
         """
         if not run_id:
             return
@@ -303,7 +417,9 @@ class DBRunLogger:
                         files_downloaded        = %s,
                         files_skipped_api_error = %s,
                         files_resubmission      = %s,
-                        files_remittance        = %s
+                        files_remittance        = %s,
+                        current_interval_from   = NULL,
+                        current_interval_to     = NULL
                     WHERE run_id = %s
                     """,
                     (
@@ -325,6 +441,110 @@ class DBRunLogger:
             except Exception:
                 pass
             logger.warning(f'DBRunLogger.end_run failed for run_id={run_id}: {exc}')
+
+    # ──────────────────────────────────────────────────────────────────
+    # v3.13 — auth-failure precondition handling
+    # ──────────────────────────────────────────────────────────────────
+
+    def get_last_real_run_status(self, facility_code: str) -> Optional[str]:
+        """
+        Return the status of the most recent *real* sync_run_log row for this
+        facility. Rows with status='running' (stale in-flight) and
+        'skipped_auth_failed' (precondition no-ops from prior days) are
+        excluded — we want to know what the last honest attempt did.
+
+        Used by main() before start_run: if the last real attempt was
+        'auth_failed', the scheduled run is skipped to prevent repeatedly
+        hammering Shafafiya with credentials that are known to be bad.
+
+        Returns None when no prior row exists or on query failure.
+        Never raises.
+        """
+        facility_id = self.get_facility_id(facility_code)
+        if not facility_id:
+            return None
+        try:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT status
+                    FROM {SCHEMA}.sync_run_log
+                    WHERE facility_id = %s
+                      AND status NOT IN ('running', 'skipped_auth_failed')
+                    ORDER BY started_at DESC
+                    LIMIT 1
+                    """,
+                    (facility_id,)
+                )
+                row = cur.fetchone()
+                return row[0] if row else None
+        except Exception as exc:
+            logger.warning(
+                f'DBRunLogger.get_last_real_run_status failed '
+                f'for {facility_code}: {exc}'
+            )
+            return None
+
+    def log_skipped_run(
+        self,
+        facility_code: str,
+        trigger_type: str,
+        search_from: date,
+        search_to: date,
+        error_message: str,
+    ) -> Optional[str]:
+        """
+        INSERT a sync_run_log row with status='skipped_auth_failed'.
+
+        Used when a scheduled run is skipped because the previous real run
+        was auth_failed. The row has started_at = ended_at = NOW() so the
+        dashboard's "most recent run" query shows it alongside real runs.
+
+        Returns run_id on success, None on failure. Never raises.
+        """
+        facility_id = self.get_facility_id(facility_code)
+        if not facility_id:
+            return None
+        search_from_dt = _parse_dt(search_from)
+        search_to_dt   = _parse_dt(search_to)
+        try:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    INSERT INTO {SCHEMA}.sync_run_log (
+                        facility_id, trigger_type, started_at, ended_at,
+                        search_from_date, search_to_date,
+                        status, error_message,
+                        engine_version, host_name
+                    ) VALUES (%s, %s, NOW(), NOW(), %s, %s,
+                              'skipped_auth_failed', %s, %s, %s)
+                    RETURNING run_id
+                    """,
+                    (
+                        facility_id, trigger_type,
+                        search_from_dt, search_to_dt,
+                        error_message,
+                        ENGINE_VERSION, socket.gethostname(),
+                    )
+                )
+                run_id = str(cur.fetchone()[0])
+                self._conn.commit()
+                logger.info(
+                    f'DBRunLogger.log_skipped_run: run_id={run_id} '
+                    f'facility={facility_code} reason={error_message!r}'
+                )
+                return run_id
+        except Exception as exc:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+            logger.warning(
+                f'DBRunLogger.log_skipped_run failed for {facility_code}: {exc}'
+            )
+            return None
 
     # ──────────────────────────────────────────────────────────────────
     # sync_run_intervals — one row per 2-hr API window
@@ -441,7 +661,16 @@ class DBRunLogger:
         }
         db_file_type = _type_map.get(file_type.lower(), 'unknown')
 
-        # Dedup: look for the same file_name for this facility in a prior run
+        # v3.15: dedup is now a HARD check — if (facility_id, file_name) already
+        # exists in file_manifest, return the existing manifest_id and skip the
+        # INSERT entirely. Pre-v3.15 set is_duplicate=TRUE and inserted anyway,
+        # which produced 22k+ duplicate rows for MF4958 (and 128 / 8 for the
+        # scheduled facilities) when Shafafiya returned the same FileID across
+        # overlapping 2-hr interval responses.
+        #
+        # CLAIMSSYNC_DEDUP_BYPASS=1 restores the legacy soft-tag-and-insert
+        # behaviour for forced adhoc re-runs.
+        existing_manifest_id = None
         is_duplicate = False
         first_seen_run_id = None
         try:
@@ -449,7 +678,7 @@ class DBRunLogger:
             with self._conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT run_id
+                    SELECT manifest_id, run_id
                     FROM {SCHEMA}.file_manifest
                     WHERE facility_id = %s AND file_name = %s
                     ORDER BY downloaded_at ASC
@@ -459,11 +688,19 @@ class DBRunLogger:
                 )
                 row = cur.fetchone()
                 if row:
+                    existing_manifest_id = str(row[0])
                     is_duplicate = True
-                    first_seen_run_id = str(row[0])
+                    first_seen_run_id = str(row[1])
         except Exception as exc:
             logger.warning(f'DBRunLogger.log_file dedup check failed: {exc}')
-            # Non-fatal — proceed with is_duplicate=False
+            # Non-fatal, fail-open — proceed to INSERT (better a duplicate
+            # row than a missed file when the dedup query itself errors out).
+
+        if existing_manifest_id and not DEDUP_BYPASS:
+            print(f'DB:log_file SKIP duplicate file={file_name} '
+                  f'first_seen_run={first_seen_run_id} '
+                  f'existing_manifest_id={existing_manifest_id}')
+            return existing_manifest_id
 
         try:
             self._ensure_connection()

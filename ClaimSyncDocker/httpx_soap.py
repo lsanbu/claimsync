@@ -31,6 +31,20 @@ _CONNECT_TIMEOUT = 60.0
 _READ_TIMEOUT    = 120.0
 
 
+class ShafafiyaAuthError(Exception):
+    """Raised when Shafafiya returns an auth-class SearchTransactionsResult
+    (-1 invalid login, -2 account disabled/locked). Callers must treat this
+    as a run-level fatal error — continuing further intervals with the same
+    credentials cannot succeed and may trigger account lockout."""
+    def __init__(self, sr_code: str, error_message: str = ''):
+        self.sr_code = sr_code
+        self.error_message = error_message
+        super().__init__(
+            f"Shafafiya auth failed (SearchTransactionsResult={sr_code})"
+            + (f" — {error_message}" if error_message else "")
+        )
+
+
 def soap_search_transactions(
         req_fname: str,
         resp_fname: str,
@@ -103,8 +117,10 @@ def soap_search_transactions(
 
     # v8g parity: Check Shafafiya SearchTransactionsResult in response body.
     # HTTP 200 does not mean success — Shafafiya embeds error codes in SOAP body:
-    #   -3  invalid parameter  |  -5  date range > 100 days  |  -10  no criteria
-    # Non-zero → log warning and return None (interval counted as failed).
+    #   -1  invalid login       -2  account disabled / locked  (AUTH — fatal)
+    #   -3  invalid parameter   -5  date range > 100 days  -10  no criteria  (per-interval skip)
+    # v3.13: auth codes raise ShafafiyaAuthError so the facility run is aborted
+    # before subsequent intervals hammer the API with bad creds.
     try:
         resp_text = response.content.decode('utf-8', errors='replace').replace('\n', ' ')
         sr_start  = resp_text.find('<SearchTransactionsResult>')
@@ -112,9 +128,29 @@ def soap_search_transactions(
         if sr_start > 0 and sr_end > sr_start:
             sr_code = resp_text[sr_start + 26 : sr_end].strip()
             if sr_code != '0':
-                logline = logwriter('w', f'His:Intv[{interval_idx}] Shafafiya SearchTransactionsResult={sr_code} — interval skipped')
+                # Extract <errorMessage> (if present) for diagnostic context
+                em_start = resp_text.find('<errorMessage>')
+                em_end   = resp_text.find('</errorMessage>')
+                error_message = ''
+                if em_start > 0 and em_end > em_start:
+                    error_message = resp_text[em_start + 14 : em_end].strip()
+                if sr_code in ('-1', '-2'):
+                    logline = logwriter(
+                        'c',
+                        f'His:Intv[{interval_idx}] SHAFAFIYA AUTH FAILED '
+                        f'sr_code={sr_code} msg={error_message!r} — aborting run'
+                    )
+                    dlfh.write(logline)
+                    raise ShafafiyaAuthError(sr_code, error_message)
+                logline = logwriter(
+                    'w',
+                    f'His:Intv[{interval_idx}] Shafafiya SearchTransactionsResult={sr_code} '
+                    f'msg={error_message!r} — interval skipped'
+                )
                 dlfh.write(logline)
                 return None
+    except ShafafiyaAuthError:
+        raise   # propagate — must not be swallowed by the broad except below
     except Exception:
         pass   # If check fails, fall through — GetHistoryTxnFileDownload handles gracefully
 
