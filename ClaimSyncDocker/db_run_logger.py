@@ -27,12 +27,12 @@ Design principles:
   - _ensure_connection() silently reconnects on dropped connection.
   - facility_id UUID looked up once per facility per run and cached.
 
-Project       : ClaimSync (Kaaryaa GenAI Solutions)
+Project       : ClaimSync (Kaaryaa Intelligence LLP)
 Phase         : Phase 3 — P3-T02
 Target DB     : claimssync-db (Azure PostgreSQL Flexible Server, UAE North)
 Schema        : claimssync  (set_search_path handled per query)
 Engine version: 2.13 → bumped to 3.1 on first P3-T02 release
-Author        : Anbu / Kaaryaa GenAI Solutions
+Author        : Anbu / Kaaryaa Intelligence LLP
 Date          : March 2026
 """
 

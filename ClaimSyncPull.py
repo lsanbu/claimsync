@@ -24,7 +24,7 @@ Security:
 Requirements:
   pip install azure-storage-blob requests
 
-Author  : Kaaryaa GenAI Solutions
+Author  : Kaaryaa Intelligence LLP
 Version : 3.1
 Date    : March 2026
 """

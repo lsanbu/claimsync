@@ -23,7 +23,7 @@ export default function DashboardLayout({
         {children}
       </main>
       <footer className="border-t border-gray-200 bg-white text-center text-xs text-gray-400 py-3">
-        Kaaryaa GenAI Solutions · ClaimSync v1.2 · Phase 3
+        Kaaryaa Intelligence LLP · ClaimSync v1.2 · Phase 3
       </footer>
     </div>
   )

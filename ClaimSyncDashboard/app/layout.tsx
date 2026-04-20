@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'ClaimSync Dashboard',
-  description: 'Shafafiya claims sync monitoring — Kaaryaa GenAI Solutions',
+  description: 'Shafafiya claims sync monitoring — Kaaryaa Intelligence LLP',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

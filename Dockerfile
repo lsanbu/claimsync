@@ -1,7 +1,7 @@
 # =============================================================================
 # ClaimSync — Dockerfile
 # =============================================================================
-# Project      : ClaimSync (Kaaryaa GenAI Solutions)
+# Project      : ClaimSync (Kaaryaa Intelligence LLP)
 # Phase        : Phase 0 — Foundation (LocalINIProvider, local folder storage)
 # Base image   : python:3.12-slim
 # Target       : Azure Container Apps (UAE North) — Phase 2+
@@ -29,7 +29,7 @@ FROM python:3.12-slim
 # ---------------------------------------------------------------------------
 # Labels
 # ---------------------------------------------------------------------------
-LABEL maintainer="Kaaryaa GenAI Solutions <anbu@kaaryaa.com>"
+LABEL maintainer="Kaaryaa Intelligence LLP <anbu@kaaryaa.com>"
 LABEL project="ClaimSync"
 LABEL version="0.1.0-phase0"
 LABEL description="ClaimSync Shafafiya sync engine — Phase 0 container"

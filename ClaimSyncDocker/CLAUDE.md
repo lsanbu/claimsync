@@ -6,11 +6,11 @@
 
 ## 1. Product Overview
 
-**ClaimSync** is a SaaS platform by Kaaryaa GenAI Solutions that automates downloading, classifying, and routing insurance claims for Abu Dhabi healthcare facilities via the Shafafiya API.
+**ClaimSync** is a SaaS platform by Kaaryaa Intelligence LLP that automates downloading, classifying, and routing insurance claims for Abu Dhabi healthcare facilities via the Shafafiya API.
 
 | Attribute | Value |
 |---|---|
-| Founder | Anbu, Kaaryaa GenAI Solutions |
+| Founder | Anbu, Kaaryaa Intelligence LLP |
 | Channel Partner | Saleem (UAE operator, production sign-off authority) |
 | Target Market | Abu Dhabi healthcare facilities |
 | Core API | Shafafiya API (UAE insurance claims) |

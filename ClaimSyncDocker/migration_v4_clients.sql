@@ -1,6 +1,6 @@
 -- =============================================================================
 -- migration_v4_clients.sql — Client entity + facility linkage
--- ClaimSync | Kaaryaa GenAI Solutions | 27 March 2026
+-- ClaimSync | Kaaryaa Intelligence LLP | 27 March 2026
 -- =============================================================================
 -- Pre-requisites: claimssync_schema_v3.sql + migration_v3.sql applied
 -- Run against: claimssync-db.postgres.database.azure.com / postgres / schema=claimssync

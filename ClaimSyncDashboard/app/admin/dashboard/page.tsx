@@ -230,7 +230,7 @@ export default function AdminDashboardPage() {
 
         <div>
           <h1 className="text-lg font-bold text-gray-900">Platform Overview</h1>
-          <p className="text-xs text-gray-400">Kaaryaa GenAI Solutions &middot; ClaimSync</p>
+          <p className="text-xs text-gray-400">Kaaryaa Intelligence LLP &middot; ClaimSync</p>
         </div>
 
         {/* Stats grid */}

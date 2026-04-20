@@ -78,7 +78,7 @@ export default function AdminLoginPage() {
             </button>
           </div>
         </div>
-        <p className="text-center text-slate-500 text-xs mt-6">Kaaryaa GenAI Solutions · Internal Use Only</p>
+        <p className="text-center text-slate-500 text-xs mt-6">Kaaryaa Intelligence LLP · Internal Use Only</p>
       </div>
     </div>
   )

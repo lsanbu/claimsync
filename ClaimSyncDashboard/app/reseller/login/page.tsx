@@ -100,14 +100,14 @@ export default function ResellerLoginPage() {
 
           <p className="text-center text-xs text-gray-400 mt-6">
             Trouble signing in? Contact{' '}
-            <a href="mailto:support@kaaryaa.com" className="text-blue-500 hover:underline">
-              support@kaaryaa.com
+            <a href="mailto:hello@kaaryaa.ai" className="text-blue-500 hover:underline">
+              hello@kaaryaa.ai
             </a>
           </p>
         </div>
 
         <p className="text-center text-blue-400 text-xs mt-6">
-          Kaaryaa GenAI Solutions · ClaimSync v1.2
+          Kaaryaa Intelligence LLP · ClaimSync v1.2
         </p>
       </div>
     </div>

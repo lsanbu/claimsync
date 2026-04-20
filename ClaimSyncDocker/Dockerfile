@@ -1,7 +1,7 @@
 # =============================================================================
 # Dockerfile — ClaimSync2 Engine
 # =============================================================================
-# Project      : ClaimSync (Kaaryaa GenAI Solutions)
+# Project      : ClaimSync (Kaaryaa Intelligence LLP)
 # Phase        : Phase 2 — Engine Migration (P2-T04)
 # Base image   : python:3.12-slim
 # Target       : Azure Container Apps Job (crclaimssync.azurecr.io)

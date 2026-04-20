@@ -371,17 +371,18 @@ export default function AdhocRunPage() {
           ) : (
             <div className="divide-y divide-gray-50">
               {/* Header */}
-              <div className="grid grid-cols-6 gap-3 px-5 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-50">
+              <div className="grid grid-cols-7 gap-3 px-5 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-50">
                 <div>Started</div>
                 <div>From</div>
                 <div>To</div>
                 <div>Status</div>
+                <div>Duration</div>
                 <div className="text-right">Files</div>
                 <div className="text-right">Actions</div>
               </div>
               {runs.map(run => (
                 <div key={run.run_id}>
-                  <div className={`grid grid-cols-6 gap-3 px-5 py-3 items-center hover:bg-gray-50 transition-colors ${run.status === 'running' ? 'bg-amber-50/40' : ''}`}>
+                  <div className={`grid grid-cols-7 gap-3 px-5 py-3 items-center hover:bg-gray-50 transition-colors ${run.status === 'running' ? 'bg-amber-50/40' : ''}`}>
                     <div className="text-xs text-gray-700">{fmtDt(run.started_at)}</div>
                     <div className="text-xs text-gray-500">{fmtDate(run.from_date)}</div>
                     <div className="text-xs text-gray-500">{fmtDate(run.to_date)}</div>
@@ -399,6 +400,16 @@ export default function AdhocRunPage() {
                       {/* v2.24: rich progress block (bar + % + elapsed + ETA) is rendered
                           as a row-spanning section below the main row instead of inside
                           this narrow status cell. */}
+                    </div>
+                    {/* v2.26: Duration cell — reuses fmtElapsed + 1s `now` tick already
+                        set up for the live progress strip. Running=live amber counter,
+                        completed=ended_at − started_at, no ended_at=em-dash. */}
+                    <div className="text-xs text-gray-500 tabular-nums">
+                      {run.status === 'running'
+                        ? <span className="text-amber-600">{fmtElapsed(Math.max(0, Math.floor((now - new Date(run.started_at).getTime()) / 1000)))}</span>
+                        : run.ended_at
+                          ? fmtElapsed(Math.max(0, Math.floor((new Date(run.ended_at).getTime() - new Date(run.started_at).getTime()) / 1000)))
+                          : '\u2014'}
                     </div>
                     <div className="text-right text-sm font-semibold text-gray-800">
                       {run.status === 'running'

@@ -151,7 +151,7 @@ def _build_html(
   <!-- Footer -->
   <tr><td style="background:#F9FAFB;padding:20px 40px;text-align:center;border-top:1px solid #E5E7EB;">
     <p style="color:#9CA3AF;font-size:11px;margin:0;">
-      ClaimSync by Kaaryaa GenAI Solutions &bull; Abu Dhabi, UAE
+      ClaimSync by Kaaryaa Intelligence LLP &bull; Abu Dhabi, UAE
     </p>
   </td></tr>
 
@@ -187,5 +187,5 @@ This link expires in {expires_days} days. After expiry, contact your ClaimSync r
 Security: Your credentials are transmitted over TLS and stored encrypted in Azure Key Vault. ClaimSync staff cannot view your password.
 
 ---
-ClaimSync by Kaaryaa GenAI Solutions | Abu Dhabi, UAE
+ClaimSync by Kaaryaa Intelligence LLP | Abu Dhabi, UAE
 """

@@ -1,7 +1,7 @@
 # =============================================================================
 # ClaimSync — Python Dependencies
 # =============================================================================
-# Project      : ClaimSync (Kaaryaa GenAI Solutions)
+# Project      : ClaimSync (Kaaryaa Intelligence LLP)
 # Script       : downloadTxnFilesv8g.py
 # Generated    : March 2026
 # Python       : 3.12

@@ -1,11 +1,11 @@
 -- =============================================================================
 -- ClaimSync — PostgreSQL Schema DDL  (v2 — Scalable Multi-SP / Reseller)
 -- =============================================================================
--- Project      : ClaimSync (Kaaryaa GenAI Solutions)
+-- Project      : ClaimSync (Kaaryaa Intelligence LLP)
 -- Phase        : Phase 1 — P1-T04 (revised)
 -- Target DB    : claimssync-db (Azure PostgreSQL Flexible Server, UAE North)
 -- PostgreSQL   : 16
--- Author       : Anbu / Kaaryaa GenAI Solutions
+-- Author       : Anbu / Kaaryaa Intelligence LLP
 -- Date         : March 2026
 --
 -- Architecture Decisions (ADR-001):
@@ -326,7 +326,7 @@ INSERT INTO tenants (
 ) VALUES (
     (SELECT reseller_id FROM claimssync.resellers WHERE short_code = 'SALEEM-UAE'),
     'Kaaryaa Test Facility Group', 'KAARYAA-T1',
-    'Kaaryaa GenAI Solutions LLC',
+    'Kaaryaa Intelligence LLP',
     'Anbu', 'anbu@kaaryaa.com',
     'UAE', 'Abu Dhabi', FALSE, 'active',
     'Phase 1 seed tenant. Holds MF2618 and PF2576 facilities for Saleem on-prem run.'
@@ -812,5 +812,5 @@ CREATE INDEX idx_manifest_downloaded ON file_manifest(downloaded_at DESC);
 
 -- =============================================================================
 -- END OF SCHEMA DDL v2
--- claimssync_schema_v2.sql | Kaaryaa GenAI Solutions | March 2026
+-- claimssync_schema_v2.sql | Kaaryaa Intelligence LLP | March 2026
 -- =============================================================================

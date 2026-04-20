@@ -1,7 +1,7 @@
 # ClaimSync — CLAUDE.md
 > **Single source of truth for Claude Code**
 > Last updated: 28 Mar 2026 — verified by Claude Code live checks
-> Founder: Anbu, Kaaryaa GenAI Solutions
+> Founder: Anbu, Kaaryaa Intelligence LLP
 > Read this file before making ANY changes to ClaimSync.
 
 ---
@@ -12,7 +12,7 @@
 
 | Attribute | Value |
 |---|---|
-| Founder | Anbu, Kaaryaa GenAI Solutions |
+| Founder | Anbu, Kaaryaa Intelligence LLP |
 | Channel Partner | Saleem — UAE operator, production sign-off authority |
 | Target Market | Abu Dhabi healthcare facilities (Shafafiya API subscribers) |
 | Core API | Shafafiya API (UAE DOH insurance claims ecosystem) |

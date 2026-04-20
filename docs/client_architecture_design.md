@@ -2,7 +2,7 @@
 
 > **Version:** 1.0
 > **Date:** 27 Mar 2026
-> **Author:** Anbu / Kaaryaa GenAI Solutions (via Claude Code)
+> **Author:** Anbu / Kaaryaa Intelligence LLP (via Claude Code)
 > **Status:** IMPLEMENTED — Phase 4 Sprint 1 deployed 27 Mar 2026 (API :3.0 / Dashboard :2.19)
 
 ---
@@ -249,7 +249,7 @@ CREATE INDEX idx_client_users_email  ON claimssync.client_users(email);
 ```sql
 -- =============================================================================
 -- migration_v4_clients.sql — Client entity + facility linkage
--- ClaimSync | Kaaryaa GenAI Solutions | March 2026
+-- ClaimSync | Kaaryaa Intelligence LLP | March 2026
 -- =============================================================================
 -- Pre-requisites: claimssync_schema_v3.sql + migration_v3.sql applied
 -- Run against: claimssync-db.postgres.database.azure.com / postgres / schema=claimssync
@@ -706,4 +706,4 @@ This query is unchanged. The engine never reads or writes `client_id`.
 ---
 
 *End of design document — client_architecture_design.md*
-*Kaaryaa GenAI Solutions | 27 Mar 2026*
+*Kaaryaa Intelligence LLP | 27 Mar 2026*

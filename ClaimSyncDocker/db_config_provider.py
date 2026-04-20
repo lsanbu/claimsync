@@ -1,7 +1,7 @@
 # =============================================================================
 # db_config_provider.py — ClaimSync Phase 2 (P2-T01)
 # =============================================================================
-# Project      : ClaimSync (Kaaryaa GenAI Solutions)
+# Project      : ClaimSync (Kaaryaa Intelligence LLP)
 # Phase        : Phase 2 — Engine Migration
 # Purpose      : DBConfigProvider — reads tenant/facility config from
 #                Azure PostgreSQL (claimssync schema) and returns a

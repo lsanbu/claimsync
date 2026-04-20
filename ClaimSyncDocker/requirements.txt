@@ -1,7 +1,7 @@
 # =============================================================================
 # ClaimSync — Python Dependencies
 # =============================================================================
-# Project      : ClaimSync (Kaaryaa GenAI Solutions)
+# Project      : ClaimSync (Kaaryaa Intelligence LLP)
 # Updated      : March 2026 — Phase 2 (Engine Migration)
 # Python       : 3.12
 #

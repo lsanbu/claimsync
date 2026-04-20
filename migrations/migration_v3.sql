@@ -2,7 +2,7 @@
 -- ClaimSync — Migration v3
 -- Sprint: Token fix + Azure Communication Services prep
 -- Date   : March 2026
--- Author : Anbu / Kaaryaa GenAI Solutions
+-- Author : Anbu / Kaaryaa Intelligence LLP
 --
 -- Changes:
 --   1. credential_tokens  — add status (4-state), sent_to_email, resend_count

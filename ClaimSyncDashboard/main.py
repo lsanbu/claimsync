@@ -14,7 +14,7 @@ DB connection  : CLAIMSSYNC_DB_DSN env var  (KV-injected DSN, same as engine)
 Deployment     : Separate Container App  ca-claimssync-api
                  Image: crclaimssync.azurecr.io/claimsync-api:1.0
 
-Project        : ClaimSync (Kaaryaa GenAI Solutions)
+Project        : ClaimSync (Kaaryaa Intelligence LLP)
 Phase          : 3 — P3-T03
 Version        : 1.0
 Date           : 2026-03-13

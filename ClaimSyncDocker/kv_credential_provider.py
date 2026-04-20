@@ -1,7 +1,7 @@
 # =============================================================================
 # kv_credential_provider.py — ClaimSync Phase 2 (P2-T02)
 # =============================================================================
-# Project      : ClaimSync (Kaaryaa GenAI Solutions)
+# Project      : ClaimSync (Kaaryaa Intelligence LLP)
 # Phase        : Phase 2 — Engine Migration
 # Purpose      : KeyVaultCredentialProvider — fetches facility credentials
 #                (userid, password, caller-license) from Azure Key Vault.

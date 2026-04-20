@@ -87,6 +87,21 @@ function fmtDate(dt: string | null) {
   return new Date(dt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+// v2.26: elapsed-duration formatter for run rows.
+// endedAt=null → use `now` (live tick while status='running'); startedAt
+// missing → em-dash. Output: "42s" / "4m 32s" / "1h 12m".
+function fmtDuration(startedAt: string | null, endedAt: string | null, now: number): string {
+  if (!startedAt) return '\u2014'
+  const start = new Date(startedAt).getTime()
+  const end   = endedAt ? new Date(endedAt).getTime() : now
+  const sec   = Math.max(0, Math.floor((end - start) / 1000))
+  if (sec < 60) return `${sec}s`
+  const m = Math.floor(sec / 60)
+  if (m < 60) return `${m}m ${sec % 60}s`
+  const h = Math.floor(m / 60)
+  return `${h}h ${m % 60}m`
+}
+
 export default function ResellerFacilityDetailPage() {
   const router     = useRouter()
   const params     = useParams()
@@ -159,6 +174,16 @@ export default function ResellerFacilityDetailPage() {
     const id = setInterval(() => loadRuns(facility.facility_code), 30000)
     return () => clearInterval(id)
   }, [facility?.facility_code, loadRuns])
+
+  // v2.26: 1s tick drives live Duration cell for status='running' rows.
+  // Idles when no run is running so we don't burn a timer for nothing.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const hasRunning = runs.some(r => r.status === 'running')
+    if (!hasRunning) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [runs])
 
   const loadFiles = async (runId: string, code: string) => {
     if (files[runId]) return
@@ -326,23 +351,34 @@ export default function ResellerFacilityDetailPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-gray-50">
-                  <div className="grid grid-cols-6 gap-3 px-5 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-50">
+                  <div className="grid grid-cols-7 gap-3 px-5 py-2 text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-50">
                     <div>Started</div>
                     <div>From</div>
                     <div>To</div>
                     <div>Status</div>
+                    <div>Duration</div>
                     <div className="text-right">Files</div>
                     <div className="text-right">Actions</div>
                   </div>
                   {runs.map(run => (
                     <div key={run.run_id}>
-                      <div className="grid grid-cols-6 gap-3 px-5 py-3 items-center hover:bg-gray-50 transition-colors">
+                      <div className="grid grid-cols-7 gap-3 px-5 py-3 items-center hover:bg-gray-50 transition-colors">
                         <div className="text-xs text-gray-700">{fmtDt(run.started_at)}</div>
                         <div className="text-xs text-gray-500">{fmtDate(run.from_date)}</div>
                         <div className="text-xs text-gray-500">{fmtDate(run.to_date)}</div>
                         <div>
                           <StatusBadge status={run.status} />
                           {run.trigger_type === 'manual' && <span className="ml-1 text-xs text-blue-500">(adhoc)</span>}
+                        </div>
+                        {/* v2.26: Duration = ended_at - started_at for completed rows,
+                            live tick from `now` while status='running', em-dash if the
+                            run stopped without writing ended_at (e.g. some failed runs). */}
+                        <div className="text-xs text-gray-500 tabular-nums">
+                          {run.status === 'running'
+                            ? <span className="text-amber-600">{fmtDuration(run.started_at, null, now)}</span>
+                            : run.ended_at
+                              ? fmtDuration(run.started_at, run.ended_at, now)
+                              : '\u2014'}
                         </div>
                         <div className="text-right text-sm font-semibold text-gray-800">{run.files_downloaded}</div>
                         <div className="text-right">
