@@ -54,7 +54,7 @@ def _validate_datetime(val: str, field: str) -> str:
 def _get_facility(facility_code: str) -> dict:
     """Look up facility by code, raise 404 if not found."""
     row = query_one(
-        f"SELECT facility_id, facility_code, facility_name, status FROM {SCHEMA}.tenant_facilities WHERE facility_code = %s",
+        f"SELECT facility_id, facility_code, facility_name, status, last_auth_failed_at, credentials_updated_at FROM {SCHEMA}.tenant_facilities WHERE facility_code = %s",
         (facility_code.upper(),),
     )
     if not row:
@@ -238,9 +238,19 @@ def get_facility_runs(
             if r.get(k) and hasattr(r[k], "isoformat"):
                 r[k] = r[k].isoformat()
 
+    # Serialize facility-level timestamps for the dashboard banner
+    last_auth_failed_at     = facility.get("last_auth_failed_at")
+    credentials_updated_at  = facility.get("credentials_updated_at")
+    if last_auth_failed_at and hasattr(last_auth_failed_at, "isoformat"):
+        last_auth_failed_at = last_auth_failed_at.isoformat()
+    if credentials_updated_at and hasattr(credentials_updated_at, "isoformat"):
+        credentials_updated_at = credentials_updated_at.isoformat()
+
     return {
-        "facility_code": facility["facility_code"],
-        "facility_name": facility["facility_name"],
+        "facility_code":           facility["facility_code"],
+        "facility_name":           facility["facility_name"],
+        "last_auth_failed_at":     last_auth_failed_at,
+        "credentials_updated_at":  credentials_updated_at,
         "runs": rows,
     }
 

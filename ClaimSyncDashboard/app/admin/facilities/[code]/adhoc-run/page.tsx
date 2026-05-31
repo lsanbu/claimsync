@@ -10,6 +10,7 @@ import {
 import RunFilesTab from '@/components/runs/RunFilesTab'
 import RunIntervalsTab from '@/components/runs/RunIntervalsTab'
 import { FileRecord, IntervalRecord } from '@/components/runs/types'
+import CredentialAlertBanner from '@/components/CredentialAlertBanner'
 
 // -- Types --
 interface RunRecord {
@@ -129,6 +130,7 @@ export default function AdhocRunPage() {
   const [triggerMsg, setTriggerMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const [runs, setRuns]             = useState<RunRecord[]>([])
+  const [facilityAuthState, setFacilityAuthState] = useState<{ last_auth_failed_at: string | null; credentials_updated_at: string | null }>({ last_auth_failed_at: null, credentials_updated_at: null })
   const [runsLoading, setRunsLoading] = useState(true)
 
   const [expandedRun, setExpandedRun] = useState<string | null>(null)
@@ -139,6 +141,41 @@ export default function AdhocRunPage() {
   const [intervalsLoading, setIntervalsLoading] = useState<string | null>(null)
 
   const getToken = () => typeof window !== 'undefined' ? sessionStorage.getItem('cs_admin_token') : null
+
+  const lastRunStatus = runs.length > 0 ? runs[0].status : null
+
+  const handleResendLink = async () => {
+    const token = getToken()
+    if (!token) return
+    // Find most recent token sent_to_email via resend endpoint (POST /admin/facilities/{code}/resend-token)
+    // We need an email — for now open a prompt for simplicity
+    const email = window.prompt('Send update link to email:')
+    if (!email) return
+    const res = await fetch(`/api/claimssync/admin/facilities/${code}/resend-token`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ send_to_email: email }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.detail || 'Failed to resend link')
+    }
+  }
+
+  const handleMarkResolved = async () => {
+    const token = getToken()
+    if (!token) return
+    const res = await fetch(`/api/claimssync/admin/facilities/${code}/mark-auth-resolved`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) {
+      await loadRuns()
+    } else {
+      const d = await res.json().catch(() => ({}))
+      alert(d.detail || 'Failed to mark resolved')
+    }
+  }
 
   // -- Load runs --
   const loadRuns = useCallback(async () => {
@@ -153,6 +190,10 @@ export default function AdhocRunPage() {
       if (!res.ok) return
       const data = await res.json()
       setRuns(data.runs ?? [])
+      setFacilityAuthState({
+        last_auth_failed_at:    data.last_auth_failed_at    ?? null,
+        credentials_updated_at: data.credentials_updated_at ?? null,
+      })
     } catch { /* ignore */ }
     finally { setRunsLoading(false) }
   }, [code])
@@ -292,6 +333,16 @@ export default function AdhocRunPage() {
             </div>
           </div>
         </div>
+
+        {/* Auth-failed credential banner */}
+          <CredentialAlertBanner
+            status={lastRunStatus}
+            facilityCode={code}
+            lastAuthFailedAt={facilityAuthState.last_auth_failed_at}
+            onResend={handleResendLink}
+            isAdmin={true}
+            onMarkResolved={handleMarkResolved}
+          />
 
         {/* SECTION A: Adhoc Run Form */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">

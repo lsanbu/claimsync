@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 SCHEMA = 'claimssync'
 
 # Engine version tag written to sync_run_log.engine_version
-ENGINE_VERSION = '3.18'
+ENGINE_VERSION = '3.19'
 
 # Status values the schema's sync_run_log_status_check constraint permits.
 # Must stay in sync with the DB migration applied alongside engine :3.13.
@@ -485,6 +485,61 @@ class DBRunLogger:
                 f'for {facility_code}: {exc}'
             )
             return None
+
+    def get_facility_auth_state(self, facility_code: str) -> dict:
+        """
+        Return auth state for the v3.19 skip-check logic.
+        Queries both sync_run_log (last real run status) and tenant_facilities
+        (credentials_updated_at, last_auth_failed_at) in two SELECTs.
+
+        Returns dict with keys:
+          last_run_status:         str | None
+          credentials_updated_at:  datetime | None
+          last_auth_failed_at:     datetime | None
+        Never raises.
+        """
+        facility_id = self.get_facility_id(facility_code)
+        result = {
+            'last_run_status':        None,
+            'credentials_updated_at': None,
+            'last_auth_failed_at':    None,
+        }
+        if not facility_id:
+            return result
+        try:
+            self._ensure_connection()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT status
+                    FROM {SCHEMA}.sync_run_log
+                    WHERE facility_id = %s
+                      AND status NOT IN ('running', 'skipped_auth_failed')
+                    ORDER BY started_at DESC
+                    LIMIT 1
+                    """,
+                    (facility_id,)
+                )
+                row = cur.fetchone()
+                if row:
+                    result['last_run_status'] = row[0]
+                cur.execute(
+                    f"""
+                    SELECT credentials_updated_at, last_auth_failed_at
+                    FROM {SCHEMA}.tenant_facilities
+                    WHERE facility_id = %s
+                    """,
+                    (facility_id,)
+                )
+                frow = cur.fetchone()
+                if frow:
+                    result['credentials_updated_at'] = frow[0]
+                    result['last_auth_failed_at']    = frow[1]
+        except Exception as exc:
+            logger.warning(
+                f'DBRunLogger.get_facility_auth_state failed for {facility_code}: {exc}'
+            )
+        return result
 
     def log_skipped_run(
         self,

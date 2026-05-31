@@ -43,6 +43,7 @@ from .routers import runs, files, stats, facilities
 from .routers import auth, reseller, admin, credentials   # onboarding module
 from .routers import adhoc                                 # adhoc run trigger
 from .routers import intervals                             # interval search history
+from .routers import internal                              # engine internal endpoints
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,7 +52,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-API_VERSION = "2.11"
+API_VERSION = "2.13"
 BUILD_TAG   = os.getenv("IMAGE_TAG", "local")
 
 
@@ -157,4 +158,9 @@ app.include_router(
 app.include_router(
     intervals.router,
     tags=["intervals"],
+)
+
+app.include_router(
+    internal.router,
+    tags=["internal"],
 )

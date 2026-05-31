@@ -104,6 +104,157 @@ class CreateAdminUser(BaseModel):
     password:       str
     is_super_admin: bool = False
 
+class ChecklistUpdate(BaseModel):
+    step:    str    # "pull_configured" | "folders_created" | "dry_run_verified"
+    checked: bool
+
+CHECKLIST_MANUAL_COLS = {
+    "pull_configured":  "checklist_pull_configured",
+    "folders_created":  "checklist_folders_created",
+    "dry_run_verified": "checklist_dry_run_verified",
+}
+
+
+def _compute_checklist(req_row: dict) -> dict:
+    """Build the 8-step onboarding checklist for a single request row.
+
+    Steps 1-2 derive from the request itself. Steps 3-5 are facility-scoped
+    and locked until approval (no facility_id exists pre-approval). Steps 6-8
+    are manual flags on onboarding_requests (checklist_* columns).
+    Returns {steps: [...], complete: int, total: 8}.
+    """
+    import json as _json
+
+    request_status = req_row.get("status")
+    submitted_at   = req_row.get("submitted_at") or req_row.get("created_at")
+    approved_at    = req_row.get("approved_at")
+    reviewed_by    = req_row.get("reviewed_by")
+
+    proposed = req_row.get("proposed_facilities")
+    if isinstance(proposed, str):
+        try:
+            proposed = _json.loads(proposed) if proposed else []
+        except Exception:
+            proposed = []
+    primary_code = None
+    if isinstance(proposed, list) and proposed:
+        primary_code = (proposed[0].get("facility_code") or "").upper() or None
+
+    facility_id = None
+    if primary_code and request_status == "approved":
+        fac = query_one(
+            f"SELECT facility_id::text AS facility_id FROM {SCHEMA}.tenant_facilities WHERE facility_code = %s",
+            (primary_code,),
+        )
+        if fac:
+            facility_id = fac["facility_id"]
+
+    cred_token = None
+    credentials_provided = False
+    first_success = None
+    if facility_id:
+        cred_token = query_one(
+            f"""
+            SELECT created_at, used_at, status, sent_to_email
+            FROM {SCHEMA}.credential_tokens
+            WHERE facility_id = %s::uuid
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (facility_id,),
+        )
+        fac_row = query_one(
+            f"SELECT credentials_provided FROM {SCHEMA}.tenant_facilities WHERE facility_id = %s::uuid",
+            (facility_id,),
+        )
+        if fac_row:
+            credentials_provided = bool(fac_row.get("credentials_provided"))
+        first_success = query_one(
+            f"""
+            SELECT started_at, ended_at, files_downloaded
+            FROM {SCHEMA}.sync_run_log
+            WHERE facility_id = %s::uuid AND status = 'success'
+            ORDER BY started_at ASC LIMIT 1
+            """,
+            (facility_id,),
+        )
+
+    def _iso(dt):
+        return dt.isoformat() if dt is not None and hasattr(dt, "isoformat") else dt
+
+    step1_done = request_status != "draft"
+    step2_done = request_status == "approved"
+    step3_done = cred_token is not None
+    step4_done = (cred_token is not None and cred_token.get("status") == "used") or credentials_provided
+    step5_done = first_success is not None
+    step6_done = bool(req_row.get("checklist_pull_configured"))
+    step7_done = bool(req_row.get("checklist_folders_created"))
+    step8_done = bool(req_row.get("checklist_dry_run_verified"))
+
+    needs_approval_note = request_status != "approved"
+    locked_detail       = "Available after approval" if needs_approval_note else None
+    manual_ts           = _iso(req_row.get("checklist_updated_at"))
+
+    def _facility_status(done: bool) -> str:
+        if done:
+            return "done"
+        return "locked" if needs_approval_note else "pending"
+
+    steps = [
+        {
+            "id": 1, "name": "Request submitted", "scope": "request", "auto": True,
+            "status": "done" if step1_done else "pending",
+            "timestamp": _iso(submitted_at),
+            "detail": None,
+        },
+        {
+            "id": 2, "name": "Admin approved", "scope": "request", "auto": True,
+            "status": "done" if step2_done else "pending",
+            "timestamp": _iso(approved_at),
+            "detail": reviewed_by if step2_done else None,
+        },
+        {
+            "id": 3, "name": "Credential email sent", "scope": "facility", "auto": True,
+            "status": _facility_status(step3_done),
+            "timestamp": _iso(cred_token.get("created_at")) if cred_token else None,
+            "detail": (cred_token.get("sent_to_email") if cred_token else locked_detail),
+        },
+        {
+            "id": 4, "name": "Credentials entered by client", "scope": "facility", "auto": True,
+            "status": _facility_status(step4_done),
+            "timestamp": _iso(cred_token.get("used_at")) if (cred_token and cred_token.get("used_at")) else None,
+            "detail": locked_detail if not step4_done and needs_approval_note else None,
+        },
+        {
+            "id": 5, "name": "First sync run completed", "scope": "facility", "auto": True,
+            "status": _facility_status(step5_done),
+            "timestamp": _iso(first_success["started_at"]) if first_success else None,
+            "detail": (
+                f"{first_success['files_downloaded']} files" if first_success
+                else locked_detail
+            ),
+        },
+        {
+            "id": 6, "name": "ClaimSync pull configured", "scope": "request", "auto": False,
+            "status": "done" if step6_done else "pending",
+            "timestamp": manual_ts if step6_done else None,
+            "detail": "MF code in ClaimSyncPull FACILITIES + exe rebuilt",
+        },
+        {
+            "id": 7, "name": "Local folders created", "scope": "request", "auto": False,
+            "status": "done" if step7_done else "pending",
+            "timestamp": manual_ts if step7_done else None,
+            "detail": "Reggr\\mfxxx\\claims, remittance, resubmission, logs",
+        },
+        {
+            "id": 8, "name": "Local dry run verified", "scope": "request", "auto": False,
+            "status": "done" if step8_done else "pending",
+            "timestamp": manual_ts if step8_done else None,
+            "detail": "ClaimSyncPull.exe tested on Saleem PC",
+        },
+    ]
+    complete = sum(1 for s in steps if s["status"] == "done")
+    return {"steps": steps, "complete": complete, "total": 8}
+
 
 # ── GET /admin/dashboard ──────────────────────────────────────────────────────
 
@@ -127,7 +278,13 @@ def admin_dashboard(user: dict = Depends(require_admin)):
              WHERE started_at >= NOW() - INTERVAL '24 hours')     AS runs_today,
             (SELECT COALESCE(SUM(files_downloaded),0)
              FROM {SCHEMA}.sync_run_log
-             WHERE started_at >= NOW() - INTERVAL '24 hours')     AS files_today
+             WHERE started_at >= NOW() - INTERVAL '24 hours')     AS files_today,
+            (SELECT COUNT(*) FROM (
+                SELECT DISTINCT ON (facility_id) status
+                FROM {SCHEMA}.sync_run_log
+                WHERE status NOT IN ('running','skipped_auth_failed')
+                ORDER BY facility_id, started_at DESC
+             ) sub WHERE sub.status = 'auth_failed')              AS auth_failed_count
         """, ()
     )
 
@@ -223,6 +380,10 @@ def list_onboarding(
             r.rejection_reason,
             r.approved_at,
             r.created_at,
+            r.checklist_pull_configured,
+            r.checklist_folders_created,
+            r.checklist_dry_run_verified,
+            r.checklist_updated_at,
             rs.name        AS reseller_name,
             rs.short_code  AS reseller_code,
             rs.contact_email AS reseller_email
@@ -240,6 +401,17 @@ def list_onboarding(
         """,
         params
     )
+    # Attach checklist progress only for approved requests (frontend hides
+    # the badge otherwise). Non-approved rows still get checklist_total=8
+    # for consistent shape.
+    for r in rows:
+        if r["status"] == "approved":
+            cl = _compute_checklist(r)
+            r["checklist_complete"] = cl["complete"]
+            r["checklist_total"]    = cl["total"]
+        else:
+            r["checklist_complete"] = None
+            r["checklist_total"]    = 8
     return rows
 
 
@@ -272,6 +444,10 @@ def get_onboarding(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Request not found")
+    cl = _compute_checklist(row)
+    row["checklist_steps"]    = cl["steps"]
+    row["checklist_complete"] = cl["complete"]
+    row["checklist_total"]    = cl["total"]
     return row
 
 
@@ -538,6 +714,47 @@ def reject_onboarding(
 
     log.info(f"Onboarding rejected: {req['tenant_name']} by {user.get('email')}")
     return {"status": "rejected", "message": f"{req['tenant_name']} request rejected."}
+
+
+# ── POST /admin/onboarding/:id/checklist ─────────────────────────────────────
+
+@router.post(
+    "/onboarding/{request_id}/checklist",
+    summary="Mark a manual onboarding checklist step (steps 6-8)",
+)
+def update_checklist(
+    request_id: str = Path(...),
+    body: ChecklistUpdate = Body(...),
+    user: dict = Depends(require_admin),
+):
+    col = CHECKLIST_MANUAL_COLS.get(body.step)
+    if not col:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid step '{body.step}'. Allowed: {list(CHECKLIST_MANUAL_COLS.keys())}",
+        )
+    admin_email = user.get("email", "admin")
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE {SCHEMA}.onboarding_requests SET
+                {col}                = %s,
+                checklist_updated_at = NOW(),
+                checklist_updated_by = %s
+            WHERE request_id = %s::uuid
+            """,
+            (body.checked, admin_email, request_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Request not found")
+    log.info(f"Checklist {body.step}={body.checked} for {request_id} by {admin_email}")
+    return {
+        "status":     "updated",
+        "step":       body.step,
+        "checked":    body.checked,
+        "updated_by": admin_email,
+    }
 
 
 # ── GET /admin/resellers ──────────────────────────────────────────────────────
@@ -905,4 +1122,41 @@ def reassign_facility_tenant(
         "new_tenant_code": tenant_code,
         "new_tenant_name": tenant_row["name"],
         "message": f"Facility {facility_code} reassigned to tenant {tenant_code}",
+    }
+
+
+# ── POST /admin/facilities/{code}/mark-auth-resolved ─────────────────────────
+
+@router.post(
+    "/facilities/{facility_code}/mark-auth-resolved",
+    summary="Admin override: mark auth failure resolved (sets credentials_updated_at = NOW())",
+)
+def mark_auth_resolved(
+    facility_code: str = Path(...),
+    user: dict = Depends(require_admin),
+):
+    facility_code = facility_code.upper()
+    fac = query_one(
+        f"SELECT facility_id FROM {SCHEMA}.tenant_facilities WHERE facility_code = %s",
+        (facility_code,),
+    )
+    if not fac:
+        raise HTTPException(status_code=404, detail=f"Facility {facility_code} not found")
+
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE {SCHEMA}.tenant_facilities
+            SET credentials_updated_at = NOW(), updated_at = NOW()
+            WHERE facility_id = %s::uuid
+            """,
+            (str(fac["facility_id"]),),
+        )
+
+    log.info("mark_auth_resolved: %s by %s", facility_code, user.get("email"))
+    return {
+        "facility_code": facility_code,
+        "resolved_by":   user.get("email", "admin"),
+        "message":       f"{facility_code} marked resolved — engine will resume on next scheduled run.",
     }

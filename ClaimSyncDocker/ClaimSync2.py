@@ -393,6 +393,31 @@ def _blob_upload_audit_redacted(local_path: str, container_name: str, blob_prefi
         print(f'BlobAudit:ERR {blob_name}: {exc}')
 
 
+def _call_auth_failed_alert(facility_code: str, run_id: str):
+    """v3.19: POST to internal API endpoint after auth_failed is written to DB.
+    Non-fatal — logs error but never raises. Requires CLAIMSSYNC_API_URL and
+    CLAIMSSYNC_INTERNAL_SECRET env vars; silently no-ops if either is missing."""
+    api_url = os.environ.get('CLAIMSSYNC_API_URL', '').rstrip('/')
+    secret  = os.environ.get('CLAIMSSYNC_INTERNAL_SECRET', '')
+    if not api_url or not secret:
+        print(f'[ClaimSync2] AUTH-ALERT: CLAIMSSYNC_API_URL or CLAIMSSYNC_INTERNAL_SECRET not set — skipping alert for {facility_code}')
+        return
+    try:
+        import httpx as _httpx
+        resp = _httpx.post(
+            f'{api_url}/internal/facilities/{facility_code}/auth-failed-alert',
+            headers={'X-Internal-Secret': secret},
+            json={'run_id': run_id},
+            timeout=15.0,
+        )
+        if resp.status_code == 200:
+            print(f'[ClaimSync2] AUTH-ALERT: sent for {facility_code} (HTTP 200)')
+        else:
+            print(f'[ClaimSync2] AUTH-ALERT: HTTP {resp.status_code} for {facility_code}')
+    except Exception as _exc:
+        print(f'[ClaimSync2] AUTH-ALERT: call failed (non-fatal): {_exc}')
+
+
 # ── v3.8: Per-facility log + CSV accumulator ────────────────────────────────
 _facility_log_path = None    # set per-facility in main()
 _facility_log_fh   = None    # file handle for per-facility log
@@ -1997,45 +2022,60 @@ def main():
                 _run_to_date   = datetime.now().strftime(SHAFAFIYA_DATE_FMT)
                 _run_from_date = arrow.now().shift(days=-1).date().strftime('%d/%m/%Y') + ' 00:00:00'
 
-            # ── v3.13: Skip scheduled runs if previous real run was auth_failed ──
-            # Adhoc/manual runs bypass this — they are the mechanism by which
-            # the operator confirms fresh credentials work before scheduled
-            # runs resume.
+            # ── v3.13/v3.19: Skip scheduled runs if previous real run was auth_failed
+            # unless credentials have been updated since the failure.
+            # Adhoc/manual runs bypass this — they confirm fresh creds work before
+            # scheduled runs resume.
             if _db_logger and _trigger_type == 'scheduled':
                 try:
-                    _last_status = _db_logger.get_last_real_run_status(facility)
+                    _auth_state   = _db_logger.get_facility_auth_state(facility)
+                    _last_status  = _auth_state.get('last_run_status')
                     if _last_status == 'auth_failed':
-                        _skip_reason = f'Previous run auth_failed — credentials need updating for {facility}'
-                        print(f'\033[33m[ClaimSync2] Skipping {facility} — previous run auth_failed, credentials need updating\033[0m')
-                        logline = logwriter('w', f'Main:SKIP {_skip_reason}')
-                        dlfh.write(f"{logline}")
-                        _facility_log(f'SKIP: {_skip_reason}')
-                        try:
-                            _skipped_run_id = _db_logger.log_skipped_run(
-                                facility_code=facility,
-                                trigger_type=_trigger_type,
-                                search_from=_run_from_date,
-                                search_to=_run_to_date,
-                                error_message=_skip_reason,
-                            )
-                            if _skipped_run_id:
-                                print(f'[ClaimSync2] DB:log_skipped_run run_id={_skipped_run_id}')
-                        except Exception as _skip_exc:
-                            logline = logwriter('w', f'DB:log_skipped_run failed (non-fatal): {_skip_exc}')
-                            dlfh.write(f"{logline}")
-                        _emit_event(
-                            'RunSkipped', level='warning',
-                            facility=facility,
-                            reason='prev_auth_failed',
-                            trigger_type=_trigger_type,
+                        _cred_updated   = _auth_state.get('credentials_updated_at')
+                        _auth_failed_at = _auth_state.get('last_auth_failed_at')
+                        # Resume if credentials were refreshed AFTER the last auth failure
+                        _should_skip = (
+                            _cred_updated is None
+                            or _auth_failed_at is None
+                            or _cred_updated <= _auth_failed_at
                         )
-                        # Close per-facility log opened earlier in this iteration
-                        if _facility_log_fh:
-                            _facility_log_fh.close()
-                            _facility_log_fh = None
-                        if _facility_log_path and os.path.exists(_facility_log_path):
-                            _blob_upload_audit(_facility_log_path, _blob_ct, 'logs')
-                        continue
+                        if not _should_skip:
+                            _ts = _cred_updated.strftime('%Y-%m-%d %H:%M') if hasattr(_cred_updated, 'strftime') else str(_cred_updated)
+                            print(f'\033[32m[ClaimSync2] Credentials refreshed at {_ts} — resuming {facility}\033[0m')
+                            logline = logwriter('i', f'Main:RESUME {facility} — credentials refreshed at {_ts}')
+                            dlfh.write(f"{logline}")
+                        if _should_skip:
+                            _skip_reason = f'Previous run auth_failed — credentials need updating for {facility}'
+                            print(f'\033[33m[ClaimSync2] Skipping {facility} — previous run auth_failed, credentials need updating\033[0m')
+                            logline = logwriter('w', f'Main:SKIP {_skip_reason}')
+                            dlfh.write(f"{logline}")
+                            _facility_log(f'SKIP: {_skip_reason}')
+                            try:
+                                _skipped_run_id = _db_logger.log_skipped_run(
+                                    facility_code=facility,
+                                    trigger_type=_trigger_type,
+                                    search_from=_run_from_date,
+                                    search_to=_run_to_date,
+                                    error_message=_skip_reason,
+                                )
+                                if _skipped_run_id:
+                                    print(f'[ClaimSync2] DB:log_skipped_run run_id={_skipped_run_id}')
+                            except Exception as _skip_exc:
+                                logline = logwriter('w', f'DB:log_skipped_run failed (non-fatal): {_skip_exc}')
+                                dlfh.write(f"{logline}")
+                            _emit_event(
+                                'RunSkipped', level='warning',
+                                facility=facility,
+                                reason='prev_auth_failed',
+                                trigger_type=_trigger_type,
+                            )
+                            # Close per-facility log opened earlier in this iteration
+                            if _facility_log_fh:
+                                _facility_log_fh.close()
+                                _facility_log_fh = None
+                            if _facility_log_path and os.path.exists(_facility_log_path):
+                                _blob_upload_audit(_facility_log_path, _blob_ct, 'logs')
+                            continue
                 except Exception as _skip_check_exc:
                     logline = logwriter('w', f'Main:SKIP_CHECK failed (non-fatal): {_skip_check_exc}')
                     dlfh.write(f"{logline}")
@@ -2197,6 +2237,10 @@ def main():
                     except Exception as _exc:
                         logline = logwriter('w', f'DB:end_run failed (non-fatal): {_exc}')
                         dlfh.write(f"{logline}")
+
+                # v3.19: alert API on auth failure — non-fatal, fire-and-forget
+                if _auth_failed:
+                    _call_auth_failed_alert(facility, _current_run_id or '')
 
                 # ── v3.13: App Insights RunCompleted event ────────────────
                 _emit_event(

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import {
   Building2, Users, Clock, CheckCircle2, AlertTriangle,
   FileText, TrendingUp, RefreshCw, LogOut, Loader2,
-  ChevronRight, Shield, ChevronDown, ChevronUp, Activity, Search, Play
+  ChevronRight, Shield, ChevronDown, ChevronUp, Activity, Search, Play, XCircle
 } from 'lucide-react'
 import RunFilesTab from '@/components/runs/RunFilesTab'
 import RunIntervalsTab from '@/components/runs/RunIntervalsTab'
@@ -240,11 +240,33 @@ export default function AdminDashboardPage() {
           <StatCard label="Pending Approvals" value={s?.pending_approvals ?? 0}   icon={Clock}        color="bg-amber-50 text-amber-500" sub="need review" />
           <StatCard label="Runs Today"        value={s?.runs_today ?? 0}           icon={TrendingUp}   color="bg-purple-50 text-purple-500" sub={`${s?.files_today ?? 0} files`} />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Active Resellers"  value={s?.active_resellers ?? 0}   icon={Users}        color="bg-slate-50 text-slate-500" />
           <StatCard label="Total Tenants"     value={s?.total_tenants ?? 0}       icon={Building2}    color="bg-indigo-50 text-indigo-500" />
           <StatCard label="Approved Total"    value={s?.approved_total ?? 0}      icon={FileText}     color="bg-teal-50 text-teal-500" />
+          <StatCard label="Auth Failed"       value={s?.auth_failed_count ?? 0}   icon={XCircle}      color="bg-red-50 text-red-500"    sub={(s?.auth_failed_count ?? 0) > 0 ? 'needs attention' : 'all clear'} />
         </div>
+
+        {/* Auth Failed Alert */}
+        {(s?.auth_failed_count ?? 0) > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <XCircle className="w-4 h-4 text-red-600" />
+                <span className="text-sm font-semibold text-red-700">
+                  {s.auth_failed_count} Facilit{s.auth_failed_count > 1 ? 'ies' : 'y'} with Auth Failure
+                </span>
+              </div>
+              <button onClick={() => router.push('/admin/facilities')}
+                className="text-xs text-red-700 hover:underline flex items-center gap-1">
+                View facilities <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+            <p className="text-xs text-red-600 opacity-80">
+              Scheduled syncs are paused for these facilities. Go to Facilities → select facility → Resend Update Link or Mark as Resolved.
+            </p>
+          </div>
+        )}
 
         {/* Pending approvals */}
         {(s?.pending_approvals ?? 0) > 0 && (

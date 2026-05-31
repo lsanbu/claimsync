@@ -206,7 +206,7 @@ def submit_credentials(
             (row["token_id"],),
         )
         cur.execute(
-            f"UPDATE {SCHEMA}.tenant_facilities SET credentials_provided = true, status = 'active', updated_at = NOW() WHERE facility_id = %s",
+            f"UPDATE {SCHEMA}.tenant_facilities SET credentials_provided = true, status = 'active', credentials_updated_at = NOW(), updated_at = NOW() WHERE facility_id = %s",
             (row["facility_id"],),
         )
 
@@ -365,4 +365,81 @@ def create_and_send_credential_token(
         "credential_url": credential_url,
         "expires_at": expires_at.isoformat(),
         "email_sent": email_sent,
+    }
+
+
+# ── Public: GET /facility/{code}/update-credentials ──────────────────────────
+# Permanent self-service URL for each facility. Creates a fresh credential
+# token and returns the entry URL. Saleem can share this URL with facility
+# staff — it always yields a working link (no need to remember a one-time token).
+
+@router.get(
+    "/facility/{code}/update-credentials",
+    summary="Generate fresh credential update link for a facility (public)",
+)
+def facility_update_credentials(code: str = Path(...)):
+    code = code.upper()
+
+    facility = query_one(
+        f"""
+        SELECT facility_id, facility_code, facility_name, kv_secret_prefix
+        FROM {SCHEMA}.tenant_facilities
+        WHERE facility_code = %s AND status = 'active'
+        """,
+        (code,),
+    )
+    if not facility:
+        raise HTTPException(status_code=404, detail=f"Active facility {code} not found")
+
+    facility_id = str(facility["facility_id"])
+
+    # Most recent sent_to_email from credential_tokens
+    token_row = query_one(
+        f"""
+        SELECT sent_to_email
+        FROM {SCHEMA}.credential_tokens
+        WHERE facility_id = %s::uuid
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        (facility_id,),
+    )
+    facility_email = token_row["sent_to_email"] if token_row and token_row.get("sent_to_email") else None
+
+    count_row = query_one(
+        f"SELECT COALESCE(MAX(resend_count), 0) AS max_count FROM {SCHEMA}.credential_tokens WHERE facility_id = %s::uuid",
+        (facility_id,),
+    )
+    new_resend_count = (count_row["max_count"] if count_row else 0) + 1
+
+    new_token  = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=TOKEN_EXPIRY_DAYS)
+    credential_url = _build_credential_url(new_token)
+
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE {SCHEMA}.credential_tokens
+            SET status = 'revoked'
+            WHERE facility_id = %s::uuid AND status IN ('valid', 'expired')
+            """,
+            (facility_id,),
+        )
+        cur.execute(
+            f"""
+            INSERT INTO {SCHEMA}.credential_tokens
+                (facility_id, token, expires_at, status, sent_to_email, resend_count, resent_at, created_by)
+            VALUES (%s::uuid, %s, %s, 'valid', %s, %s, NOW(), 'self-service')
+            """,
+            (facility_id, new_token, expires_at, facility_email, new_resend_count),
+        )
+
+    log.info("facility_update_credentials: %s → new token (resend_count=%s)", code, new_resend_count)
+
+    return {
+        "facility_code":  facility["facility_code"],
+        "facility_name":  facility["facility_name"],
+        "token":          new_token,
+        "credential_url": credential_url,
+        "expires_at":     expires_at.isoformat(),
     }
