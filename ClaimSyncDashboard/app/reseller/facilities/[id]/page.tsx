@@ -219,6 +219,22 @@ export default function ResellerFacilityDetailPage() {
     finally { setIntervalsLoading(null) }
   }
 
+  const handleResendLink = async () => {
+    const email = window.prompt('Send credential update link to (email):')
+    if (!email?.trim()) return
+    const token = getToken()
+    if (!token) return
+    const res = await fetch(`/api/claimssync/reseller/facilities/${facilityId}/resend-token`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ send_to_email: email.trim() }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      throw new Error(d.detail || 'Failed to resend link')
+    }
+  }
+
   const toggleRun = (runId: string) => {
     if (!facility) return
     if (expandedRun === runId) {
@@ -292,7 +308,11 @@ export default function ResellerFacilityDetailPage() {
         {facility && (
           <>
             {/* v3.13: Credential-error banner when latest run is auth-blocked */}
-            <CredentialAlertBanner status={lastRun?.status ?? null} />
+            <CredentialAlertBanner
+              status={lastRun?.status ?? null}
+              facilityCode={facility.facility_code}
+              onResend={handleResendLink}
+            />
 
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-start justify-between">

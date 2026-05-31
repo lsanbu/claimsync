@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 import re
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -33,6 +34,7 @@ from pydantic import BaseModel
 
 from ..db import query, query_one, get_db, SCHEMA
 from .auth import require_reseller
+from ..email_service import send_credential_email
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -795,6 +797,9 @@ class ResellerAdhocRunRequest(BaseModel):
     from_datetime: str
     to_datetime: str
 
+class ResellerResendTokenRequest(BaseModel):
+    send_to_email: str
+
 @router.post("/facilities/{facility_code}/adhoc-run", summary="Trigger adhoc run (reseller)")
 def reseller_trigger_adhoc_run(
     facility_code: str = Path(...),
@@ -853,3 +858,84 @@ def reseller_trigger_adhoc_run(
     except Exception as exc:
         log.exception("Reseller adhoc run trigger failed for %s", facility_code)
         raise HTTPException(status_code=500, detail=f"Failed to trigger adhoc run: {exc}")
+
+
+# ── POST /reseller/facilities/{facility_id}/resend-token ─────────────────────
+
+_TOKEN_EXPIRY_DAYS = 7
+
+@router.post("/facilities/{facility_id}/resend-token", summary="Resend credential update link (reseller)")
+def reseller_resend_token(
+    facility_id: str = Path(...),
+    body: ResellerResendTokenRequest = Body(...),
+    user: dict = Depends(require_reseller),
+):
+    reseller_id = user.get("reseller_id")
+    if not reseller_id:
+        raise HTTPException(status_code=403, detail="Reseller ID required")
+
+    fac = query_one(
+        f"""
+        SELECT f.facility_id::text, f.facility_code, f.facility_name
+        FROM {SCHEMA}.tenant_facilities f
+        WHERE f.facility_id = %s::uuid
+          AND EXISTS (
+              SELECT 1 FROM {SCHEMA}.onboarding_requests orq
+               WHERE orq.tenant_id   = f.tenant_id
+                 AND orq.reseller_id = %s::uuid
+                 AND orq.status      = 'approved'
+          )
+        """,
+        (facility_id, reseller_id),
+    )
+    if not fac:
+        raise HTTPException(status_code=403, detail="Facility not found or not accessible")
+
+    count_row = query_one(
+        f"SELECT COALESCE(MAX(resend_count), 0) AS max_count FROM {SCHEMA}.credential_tokens WHERE facility_id = %s::uuid",
+        (facility_id,),
+    )
+    new_resend_count = (count_row["max_count"] if count_row else 0) + 1
+
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE {SCHEMA}.credential_tokens
+            SET status = 'revoked'
+            WHERE facility_id = %s::uuid AND status IN ('valid', 'expired')
+            """,
+            (facility_id,),
+        )
+        new_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=_TOKEN_EXPIRY_DAYS)
+        cur.execute(
+            f"""
+            INSERT INTO {SCHEMA}.credential_tokens
+                (facility_id, token, expires_at, status, sent_to_email, resend_count, resent_at, created_by)
+            VALUES (%s::uuid, %s, %s, 'valid', %s, %s, NOW(), %s)
+            """,
+            (facility_id, new_token, expires_at, body.send_to_email, new_resend_count, user.get("email", "reseller")),
+        )
+
+    dashboard_url = os.getenv("CLAIMSSYNC_DASHBOARD_URL", "").rstrip("/")
+    credential_url = f"{dashboard_url}/onboard/credentials/{new_token}"
+
+    email_sent = send_credential_email(
+        to_email=body.send_to_email,
+        facility_name=fac["facility_name"],
+        facility_code=fac["facility_code"],
+        credential_url=credential_url,
+        expires_days=_TOKEN_EXPIRY_DAYS,
+        is_resend=True,
+    )
+
+    log.info("Reseller resend token for %s → %s by %s (email_sent=%s)",
+             fac["facility_code"], body.send_to_email, user.get("email"), email_sent)
+
+    return {
+        "credential_url": credential_url,
+        "sent_to": body.send_to_email,
+        "expires_at": expires_at.isoformat(),
+        "email_sent": email_sent,
+    }
