@@ -8,6 +8,7 @@ import {
   AlertTriangle, RefreshCw, BadgeCheck, Ban, Copy, Link, Shield
 } from 'lucide-react'
 import ResendCredentialToken from '@/components/admin/ResendCredentialToken'
+import OnboardingChecklist, { ChecklistStep } from '@/components/admin/OnboardingChecklist'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface OnboardingDetail {
@@ -36,6 +37,9 @@ interface OnboardingDetail {
   submitted_at:         string
   reviewed_at:          string | null
   reviewed_by:          string | null
+  checklist_steps?:     ChecklistStep[]
+  checklist_complete?:  number
+  checklist_total?:     number
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -355,6 +359,17 @@ export default function AdminOnboardingDetailPage() {
                     currentEmail={detail.contact_email || detail.reseller_email}
                   />
                 </div>
+              )}
+
+              {/* 8-step onboarding checklist — collapsible, bottom of page */}
+              {detail.checklist_steps && detail.checklist_steps.length > 0 && (
+                <OnboardingChecklist
+                  requestId={id}
+                  steps={detail.checklist_steps}
+                  complete={detail.checklist_complete ?? 0}
+                  total={detail.checklist_total ?? 8}
+                  onRefresh={load}
+                />
               )}
             </div>
 

@@ -109,6 +109,14 @@ function OnboardingListPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-sm text-gray-800">{r.tenant_name}</span>
                     <StatusBadge status={r.status} />
+                    {r.status === 'approved' && typeof r.checklist_complete === 'number' && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border
+                        ${r.checklist_complete === (r.checklist_total ?? 8)
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                        {r.checklist_complete}/{r.checklist_total ?? 8} steps
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-400 mt-0.5">
                     {r.reseller_name} · {r.contact_email} · {fmtDate(r.created_at)}
